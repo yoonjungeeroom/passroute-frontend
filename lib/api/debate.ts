@@ -41,7 +41,7 @@ export interface DebateTurn {
 export interface DebateStateResponse {
   sessionId: number
   currentState: string
-  isWaitingForUser: boolean
+  waitingForUser: boolean
   version: number
   latestTurns: DebateTurn[]
 }

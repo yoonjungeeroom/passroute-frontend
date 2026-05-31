@@ -113,7 +113,7 @@ export default function DebatePage() {
           setPhase("ending")
           return
         }
-        if (state.isWaitingForUser) {
+        if (state.waitingForUser) {
           // 사용자 턴이면 폴링 중단
           setPolling(false)
           waitStart = 0
@@ -583,7 +583,7 @@ export default function DebatePage() {
                   )
                 })}
 
-                {polling && !debateState?.isWaitingForUser && (
+                {polling && !debateState?.waitingForUser && (
                   <div className="flex justify-start">
                     <div className="rounded-2xl bg-secondary px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -594,7 +594,7 @@ export default function DebatePage() {
                   </div>
                 )}
 
-                {pollTimeout && !debateState?.isWaitingForUser && (
+                {pollTimeout && !debateState?.waitingForUser && (
                   <div className="flex justify-center">
                     <p className="text-xs text-muted-foreground">응답이 지연되고 있습니다. 잠시만 기다려주세요.</p>
                   </div>
@@ -604,7 +604,7 @@ export default function DebatePage() {
               </div>
 
               {/* Input Area */}
-              {phase === "debating" && debateState?.isWaitingForUser && (
+              {phase === "debating" && debateState?.waitingForUser && (
                 <div className="mt-4 flex gap-2">
                   <Textarea
                     value={userInput}
