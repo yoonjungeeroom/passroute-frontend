@@ -1,4 +1,4 @@
-import { apiFetch, getAuthHeaders } from "./client"
+import { apiFetch } from "./client"
 
 export interface DebateTopic {
   id: number
@@ -25,17 +25,25 @@ export interface DebateSessionCreateResponse {
   sessionId: number
 }
 
+export type SpeakerType = "USER" | "AI_COMPETITOR" | "AI_INTERVIEWER"
+export type DebateRound = "OPENING" | "REBUTTAL_1" | "REBUTTAL_2" | "CLOSING" | "MODERATION"
+
+export interface DebateTurn {
+  id: number
+  speakerType: SpeakerType
+  round: DebateRound
+  stance: string
+  content: string
+  audioUrl: string | null
+  createdAt: string
+}
+
 export interface DebateStateResponse {
   sessionId: number
   currentState: string
-  isWaitingForUser: boolean
+  waitingForUser: boolean
   version: number
-  latestTurns: {
-    speaker: string
-    content: string
-    round: string
-    stance: string
-  }[]
+  latestTurns: DebateTurn[]
 }
 
 export async function getDebateTopics(category?: string): Promise<DebateTopic[]> {
@@ -69,13 +77,11 @@ export async function createDebateSession(data: {
 }
 
 export async function startDebateSession(sessionId: number): Promise<void> {
-  const response = await fetch(`/debate/${sessionId}/start`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-  })
-  if (!response.ok) {
-    throw new Error("토론 시작에 실패했습니다")
-  }
+  return apiFetch<void>(
+    `/debate/${sessionId}/start`,
+    { method: "POST" },
+    "토론 시작에 실패했습니다"
+  )
 }
 
 export async function getDebateState(sessionId: number): Promise<DebateStateResponse> {
@@ -87,22 +93,17 @@ export async function getDebateState(sessionId: number): Promise<DebateStateResp
 }
 
 export async function submitDebateTurn(sessionId: number, content: string): Promise<void> {
-  const response = await fetch(`/debate/${sessionId}/turn`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ content }),
-  })
-  if (!response.ok) {
-    throw new Error("토론 턴 제출에 실패했습니다")
-  }
+  return apiFetch<void>(
+    `/debate/${sessionId}/turn`,
+    { method: "POST", body: JSON.stringify({ content }) },
+    "토론 턴 제출에 실패했습니다"
+  )
 }
 
 export async function endDebateSession(sessionId: number): Promise<void> {
-  const response = await fetch(`/debate/${sessionId}/end`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-  })
-  if (!response.ok && response.status !== 202) {
-    throw new Error("토론 종료에 실패했습니다")
-  }
+  return apiFetch<void>(
+    `/debate/${sessionId}/end`,
+    { method: "POST" },
+    "토론 종료에 실패했습니다"
+  )
 }
