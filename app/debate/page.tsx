@@ -36,7 +36,16 @@ import {
   type DebateTopic,
   type DebatePersona,
   type DebateStateResponse,
+  type DebateRound,
 } from "@/lib/api/debate"
+
+const roundLabel: Record<DebateRound, string> = {
+  OPENING: "개회",
+  REBUTTAL_1: "반론1",
+  REBUTTAL_2: "반론2",
+  CLOSING: "마무리",
+  MODERATION: "사회",
+}
 
 type Phase = "setup" | "debating" | "ending"
 type SetupStep = 1 | 2 | 3 | 4
@@ -65,6 +74,8 @@ export default function DebatePage() {
   const [polling, setPolling] = useState(false)
   const [pollTrigger, setPollTrigger] = useState(0)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const playedTurnIds = useRef<Set<number>>(new Set())
 
   // Load topics and personas
   useEffect(() => {
@@ -131,6 +142,24 @@ export default function DebatePage() {
   // Auto scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [debateState?.latestTurns])
+
+  // TTS 자동 재생 — audioUrl 있는 새 AI 턴만
+  useEffect(() => {
+    if (!debateState?.latestTurns) return
+    const newAudioTurn = [...debateState.latestTurns]
+      .reverse()
+      .find(
+        (t) =>
+          t.speakerType !== "USER" &&
+          t.audioUrl &&
+          !playedTurnIds.current.has(t.id)
+      )
+    if (!newAudioTurn || !newAudioTurn.audioUrl) return
+    playedTurnIds.current.add(newAudioTurn.id)
+    audioRef.current?.pause()
+    audioRef.current = new Audio(newAudioTurn.audioUrl)
+    audioRef.current.play().catch(() => {})
   }, [debateState?.latestTurns])
 
   const filteredTopics = categoryFilter === "all"
@@ -507,24 +536,36 @@ export default function DebatePage() {
 
               {/* Chat Area */}
               <div className="flex-1 space-y-4 overflow-y-auto rounded-lg border border-border/50 bg-card p-4">
-                {debateState?.latestTurns.map((turn, i) => {
-                  const isUser = turn.speaker === "USER"
+                {debateState?.latestTurns.map((turn) => {
+                  const isUser = turn.speakerType === "USER"
+                  const isInterviewer = turn.speakerType === "AI_INTERVIEWER"
+                  const speakerName = isUser
+                    ? "나"
+                    : isInterviewer
+                      ? "면접관"
+                      : selectedPersona?.name
                   return (
-                    <div key={i} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                    <div
+                      key={turn.id}
+                      className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+                    >
                       <div
                         className={`max-w-[75%] rounded-2xl px-4 py-3 ${
                           isUser
                             ? "bg-primary text-white"
-                            : "bg-secondary text-foreground"
+                            : isInterviewer
+                              ? "bg-amber-100 text-foreground dark:bg-amber-900/30"
+                              : "bg-secondary text-foreground"
                         }`}
                       >
                         <div className="mb-1 flex items-center gap-2">
-                          <span className="text-xs font-medium opacity-70">
-                            {isUser ? "나" : selectedPersona?.name}
-                          </span>
+                          <span className="text-xs font-medium opacity-70">{speakerName}</span>
                           {turn.round && (
-                            <Badge variant="outline" className={`text-[10px] ${isUser ? "border-white/30 text-white/70" : ""}`}>
-                              {turn.round}
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] ${isUser ? "border-white/30 text-white/70" : ""}`}
+                            >
+                              {roundLabel[turn.round] ?? turn.round}
                             </Badge>
                           )}
                         </div>
