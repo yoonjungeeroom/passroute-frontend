@@ -25,22 +25,26 @@ import {
   Briefcase,
   Plus,
   Trash2,
-  Link as LinkIcon,
   FileText,
   Calendar,
   Save,
-  Clock,
   GraduationCap,
-  X,
-  AlertCircle
+  X
 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  getSelfIntroDetail,
+  createSelfIntro,
+  updateSelfIntro,
+  deleteSelfIntro,
+} from "@/lib/api/self-intro"
 
 interface SelfIntroModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   editMode?: boolean
-  initialData?: SelfIntroData | null
+  editId?: number | null
   onDelete?: () => void
 }
 
@@ -66,16 +70,20 @@ interface SelfIntroData {
 }
 
 const companies = [
-  "삼성전자", "SK하이닉스", "LG전자", "네이버", "카카오", 
-  "쿠팡", "라인", "배달의민족", "토스", "당근마켓",
-  "현대자동차", "기아", "포스코", "KT", "SK텔레콤", "기타"
+  "네이버", "카카오", "카카오페이", "카카오뱅크", "토스",
+  "쿠팡", "배달의민족", "당근", "라인", "야놀자",
+  "삼성전자", "LG전자", "SK하이닉스", "현대자동차",
+  "KT", "SK텔레콤", "NHN", "넷마블", "데브시스터즈",
+  "무신사", "올리브영", "마켓컬리", "뱅크샐러드", "쏘카",
+  "인프랩", "11번가", "지마켓",
 ]
 
 const roles = [
-  "백엔드 개발자", "프론트엔드 개발자", "풀스택 개발자", 
-  "AI/ML 엔지니어", "데이터 엔지니어", "데이터 분석가",
-  "DevOps 엔지니어", "보안 엔지니어", "QA 엔지니어",
-  "iOS 개발자", "Android 개발자", "게임 개발자", "기타"
+  "백엔드 개발자", "프론트엔드 개발자", "풀스택 개발자", "앱 개발자",
+  "AI/ML 엔지니어", "MLOps 엔지니어", "데이터 엔지니어", "데이터 사이언티스트",
+  "DevOps 엔지니어", "클라우드 엔지니어", "보안 엔지니어", "시스템 엔지니어",
+  "네트워크 엔지니어", "QA 엔지니어", "게임 개발자", "임베디드 개발자",
+  "블록체인 개발자", "DBA",
 ]
 
 const experienceLevels = [
@@ -90,12 +98,12 @@ const interviewStages = [
 
 const MAX_CHAR_LIMIT = 1000
 
-export function SelfIntroModal({ 
-  open, 
-  onOpenChange, 
-  editMode = false, 
-  initialData = null,
-  onDelete 
+export function SelfIntroModal({
+  open,
+  onOpenChange,
+  editMode = false,
+  editId = null,
+  onDelete
 }: SelfIntroModalProps) {
   const [data, setData] = useState<SelfIntroData>({
     company: "",
@@ -111,14 +119,54 @@ export function SelfIntroModal({
     interviewStage: "",
   })
 
-  const [customCompany, setCustomCompany] = useState("")
-  const [customRole, setCustomRole] = useState("")
+  const [showCompanySuggestions, setShowCompanySuggestions] = useState(false)
+  const [showRoleSuggestions, setShowRoleSuggestions] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [loadingDetail, setLoadingDetail] = useState(false)
+
+  const careerLevelMap: Record<string, string> = {
+    intern: "INTERN",
+    entry: "JUNIOR",
+    experienced: "SENIOR",
+  }
+
+  const reverseCareerMap: Record<string, string> = {
+    INTERN: "intern",
+    JUNIOR: "entry",
+    SENIOR: "experienced",
+  }
 
   useEffect(() => {
-    if (open && initialData) {
-      setData(initialData)
+    if (open && editMode && editId) {
+      setLoadingDetail(true)
+      getSelfIntroDetail(editId)
+        .then((detail) => {
+          setData({
+            id: String(detail.id),
+            company: detail.companyName,
+            role: detail.jobPosition,
+            experience: reverseCareerMap[detail.careerLevel] || "",
+            jdText: detail.jobDescription || "",
+            jobPostingUrl: detail.jobPostingUrl || "",
+            notes: detail.memo || "",
+            questions: detail.items.length > 0
+              ? detail.items.map((item) => ({
+                  id: String(item.id),
+                  question: item.questionText,
+                  answer: item.answerText,
+                }))
+              : [{ id: "1", question: "", answer: "" }],
+            interviewDate: detail.interviewDate || "",
+            interviewTime: detail.interviewTime || "",
+            interviewStage: detail.interviewStage || "",
+          })
+        })
+        .catch(() => {
+          // keep empty form on error
+        })
+        .finally(() => setLoadingDetail(false))
     } else if (open && !editMode) {
-      // Reset form for new entry
       setData({
         company: "",
         role: "",
@@ -133,7 +181,7 @@ export function SelfIntroModal({
         interviewStage: "",
       })
     }
-  }, [open, initialData, editMode])
+  }, [open, editMode, editId])
 
   const addQuestion = () => {
     setData(prev => ({
@@ -158,17 +206,59 @@ export function SelfIntroModal({
     }))
   }
 
-  const handleSave = () => {
-    onOpenChange(false)
+  const handleSave = async () => {
+    const companyName = data.company.trim()
+    const jobPosition = data.role.trim()
+    const careerLevel = (careerLevelMap[data.experience] || "JUNIOR") as "INTERN" | "JUNIOR" | "SENIOR"
+
+    if (!companyName || !jobPosition) return
+
+    const payload = {
+      companyName,
+      jobPosition,
+      careerLevel,
+      jobDescription: data.jdText || undefined,
+      jobPostingUrl: data.jobPostingUrl || undefined,
+      memo: data.notes || undefined,
+      interviewDate: data.interviewDate || undefined,
+      interviewTime: data.interviewTime || undefined,
+      interviewStage: data.interviewStage || undefined,
+      items: data.questions
+        .filter(q => q.question.trim())
+        .map(q => ({ questionText: q.question, answerText: q.answer || undefined })),
+    }
+
+    setSaving(true)
+    try {
+      if (editMode && editId) {
+        await updateSelfIntro(editId, payload)
+      } else {
+        await createSelfIntro(payload)
+      }
+      onOpenChange(false)
+    } catch {
+      // stay open on error
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleTempSave = () => {
-    // Save draft logic
+  const handleDelete = async () => {
+    if (!editId) return
+    setDeleting(true)
+    try {
+      await deleteSelfIntro(editId)
+      onOpenChange(false)
+    } catch {
+      // stay open on error
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto border-border/50 bg-card sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto border-border bg-card sm:max-w-2xl" onOpenAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
             <FileText className="h-5 w-5 text-primary" />
@@ -189,54 +279,55 @@ export function SelfIntroModal({
 
             <div className="grid gap-4 sm:grid-cols-2">
               {/* Company */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 relative">
                 <Label className="text-xs text-muted-foreground">기업명 *</Label>
-                <Select
+                <Input
+                  placeholder="기업명 입력 또는 선택"
                   value={data.company}
-                  onValueChange={(value) => setData(prev => ({ ...prev, company: value }))}
-                >
-                  <SelectTrigger className="border-border/50 bg-secondary/30">
-                    <SelectValue placeholder="기업을 선택하세요" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {companies.map((company) => (
-                      <SelectItem key={company} value={company}>{company}</SelectItem>
+                  onChange={(e) => setData(prev => ({ ...prev, company: e.target.value }))}
+                  onFocus={() => setShowCompanySuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowCompanySuggestions(false), 150)}
+                  className="border-border bg-secondary/30 focus-visible:ring-0 focus-visible:border-primary"
+                />
+                {showCompanySuggestions && data.company !== "" && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-40 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+                    {companies.filter(c => c.includes(data.company)).map(c => (
+                      <button key={c} type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-secondary/50" onMouseDown={() => setData(prev => ({ ...prev, company: c }))}>
+                        {c}
+                      </button>
                     ))}
-                  </SelectContent>
-                </Select>
-                {data.company === "기타" && (
-                  <Input
-                    placeholder="기업명을 입력하세요"
-                    value={customCompany}
-                    onChange={(e) => setCustomCompany(e.target.value)}
-                    className="mt-2 border-border/50 bg-secondary/30"
-                  />
+                  </div>
+                )}
+                {showCompanySuggestions && data.company === "" && companies.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-40 overflow-y-auto rounded-lg border border-border bg-white shadow-lg">
+                    {companies.map(c => (
+                      <button key={c} type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-secondary/50" onMouseDown={() => setData(prev => ({ ...prev, company: c }))}>
+                        {c}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
 
               {/* Role */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 relative">
                 <Label className="text-xs text-muted-foreground">직무 *</Label>
-                <Select
+                <Input
+                  placeholder="직무 입력 또는 선택"
                   value={data.role}
-                  onValueChange={(value) => setData(prev => ({ ...prev, role: value }))}
-                >
-                  <SelectTrigger className="border-border/50 bg-secondary/30">
-                    <SelectValue placeholder="직무를 선택하세요" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roles.map((role) => (
-                      <SelectItem key={role} value={role}>{role}</SelectItem>
+                  onChange={(e) => setData(prev => ({ ...prev, role: e.target.value }))}
+                  onFocus={() => setShowRoleSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowRoleSuggestions(false), 150)}
+                  className="border-border bg-secondary/30"
+                />
+                {showRoleSuggestions && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-40 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+                    {roles.filter(r => !data.role || r.includes(data.role)).map(r => (
+                      <button key={r} type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-secondary/50" onMouseDown={() => setData(prev => ({ ...prev, role: r }))}>
+                        {r}
+                      </button>
                     ))}
-                  </SelectContent>
-                </Select>
-                {data.role === "기타" && (
-                  <Input
-                    placeholder="직무를 입력하세요"
-                    value={customRole}
-                    onChange={(e) => setCustomRole(e.target.value)}
-                    className="mt-2 border-border/50 bg-secondary/30"
-                  />
+                  </div>
                 )}
               </div>
 
@@ -252,7 +343,7 @@ export function SelfIntroModal({
                         "flex-1 rounded-lg border px-3 py-2 text-sm transition-all",
                         data.experience === level.id
                           ? "border-primary bg-primary/10 text-foreground"
-                          : "border-border/50 text-muted-foreground hover:border-primary/30"
+                          : "border-border text-muted-foreground hover:border-primary/30"
                       )}
                     >
                       {level.label}
@@ -272,60 +363,14 @@ export function SelfIntroModal({
                     placeholder="연차를 입력하세요"
                     value={data.experienceYears || ""}
                     onChange={(e) => setData(prev => ({ ...prev, experienceYears: parseInt(e.target.value) || undefined }))}
-                    className="border-border/50 bg-secondary/30"
+                    className="border-border bg-secondary/30"
                   />
                 </div>
               )}
             </div>
           </section>
 
-          {/* Section B: Job Info */}
-          <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Briefcase className="h-4 w-4 text-primary" />
-              <h3 className="font-semibold text-foreground">채용 정보</h3>
-            </div>
-
-            <div className="space-y-4">
-              {/* JD Text */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">JD (직무 설명)</Label>
-                <Textarea
-                  placeholder="채용 공고의 직무 설명을 붙여넣으세요"
-                  value={data.jdText}
-                  onChange={(e) => setData(prev => ({ ...prev, jdText: e.target.value }))}
-                  className="min-h-[80px] border-border/50 bg-secondary/30"
-                />
-              </div>
-
-              {/* Job Posting URL */}
-              <div className="space-y-1.5">
-                <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <LinkIcon className="h-3 w-3" />
-                  채용공고 URL
-                </Label>
-                <Input
-                  placeholder="https://..."
-                  value={data.jobPostingUrl}
-                  onChange={(e) => setData(prev => ({ ...prev, jobPostingUrl: e.target.value }))}
-                  className="border-border/50 bg-secondary/30"
-                />
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">메모</Label>
-                <Textarea
-                  placeholder="추가 메모를 입력하세요"
-                  value={data.notes}
-                  onChange={(e) => setData(prev => ({ ...prev, notes: e.target.value }))}
-                  className="min-h-[60px] border-border/50 bg-secondary/30"
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* Section C: Self-Introduction Questions */}
+          {/* Section B: Self-Introduction Questions */}
           <section className="space-y-4">
             <div className="flex items-center gap-2">
               <GraduationCap className="h-4 w-4 text-primary" />
@@ -335,7 +380,7 @@ export function SelfIntroModal({
 
             <div className="space-y-4">
               {data.questions.map((q, index) => (
-                <div key={q.id} className="space-y-2 rounded-xl border border-border/50 bg-secondary/20 p-4">
+                <div key={q.id} className="space-y-2 rounded-xl border border-border bg-secondary/20 p-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-foreground">문항 {index + 1}</span>
                     {data.questions.length > 1 && (
@@ -353,14 +398,14 @@ export function SelfIntroModal({
                     placeholder="질문을 입력하세요"
                     value={q.question}
                     onChange={(e) => updateQuestion(q.id, "question", e.target.value)}
-                    className="border-border/50 bg-secondary/30"
+                    className="border-border bg-secondary/30"
                   />
                   <div className="space-y-1">
                     <Textarea
                       placeholder="답변을 입력하세요"
                       value={q.answer}
                       onChange={(e) => updateQuestion(q.id, "answer", e.target.value)}
-                      className="min-h-[100px] border-border/50 bg-secondary/30"
+                      className="min-h-[100px] border-border bg-secondary/30"
                       maxLength={MAX_CHAR_LIMIT}
                     />
                     <div className="flex justify-end">
@@ -381,7 +426,7 @@ export function SelfIntroModal({
               <Button
                 variant="outline"
                 onClick={addQuestion}
-                className="w-full gap-2 border-dashed border-border/50 py-6 text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                className="w-full gap-2 border-dashed border-border py-6 text-muted-foreground hover:border-primary/50 hover:text-foreground"
               >
                 <Plus className="h-4 w-4" />
                 문항 추가
@@ -403,7 +448,7 @@ export function SelfIntroModal({
                   type="date"
                   value={data.interviewDate}
                   onChange={(e) => setData(prev => ({ ...prev, interviewDate: e.target.value }))}
-                  className="border-border/50 bg-secondary/30"
+                  className="border-border bg-secondary/30"
                 />
               </div>
               <div className="space-y-1.5">
@@ -412,7 +457,7 @@ export function SelfIntroModal({
                   type="time"
                   value={data.interviewTime}
                   onChange={(e) => setData(prev => ({ ...prev, interviewTime: e.target.value }))}
-                  className="border-border/50 bg-secondary/30"
+                  className="border-border bg-secondary/30"
                 />
               </div>
               <div className="space-y-1.5">
@@ -421,7 +466,7 @@ export function SelfIntroModal({
                   value={data.interviewStage}
                   onValueChange={(value) => setData(prev => ({ ...prev, interviewStage: value }))}
                 >
-                  <SelectTrigger className="border-border/50 bg-secondary/30">
+                  <SelectTrigger className="border-border bg-secondary/30">
                     <SelectValue placeholder="단계 선택" />
                   </SelectTrigger>
                   <SelectContent>
@@ -438,13 +483,14 @@ export function SelfIntroModal({
         {/* Footer Actions */}
         <div className="flex items-center justify-between border-t border-border/30 pt-4">
           <div className="flex items-center gap-2">
-            {editMode && onDelete && (
+            {editMode && editId && (
               <Button
                 variant="ghost"
-                onClick={onDelete}
+                onClick={handleDelete}
+                disabled={deleting}
                 className="gap-1.5 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400"
               >
-                <Trash2 className="h-4 w-4" />
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 삭제
               </Button>
             )}
@@ -452,18 +498,19 @@ export function SelfIntroModal({
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              onClick={handleTempSave}
-              className="gap-1.5 border-border/50"
+              onClick={() => onOpenChange(false)}
+              className="gap-1.5 border-border"
             >
-              <Clock className="h-4 w-4" />
-              임시 저장
+              <X className="h-4 w-4" />
+              취소
             </Button>
             <Button
               onClick={handleSave}
-              className="gap-1.5 bg-gradient-to-r from-primary to-violet-600 text-white hover:opacity-90"
+              disabled={saving}
+              className="gap-1.5 bg-primary text-white hover:opacity-90"
             >
-              <Save className="h-4 w-4" />
-              저장 완료
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? "저장 중..." : "저장 완료"}
             </Button>
           </div>
         </div>

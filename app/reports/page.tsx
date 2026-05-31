@@ -1,444 +1,420 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { MobileHeader } from "@/components/dashboard/mobile-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ChevronLeft, ChevronDown, Search, X, Sparkles, RotateCcw, BarChart2 } from "lucide-react"
+import { ChevronLeft, ChevronDown, Search, X, RotateCcw, BarChart2, Loader2 } from "lucide-react"
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
+import { faBrain, faChartLine, faStar, faArrowTrendUp, faLightbulb } from "@fortawesome/free-solid-svg-icons"
 import { cn } from "@/lib/utils"
+import { getReportList, getInterviewReport, getDebateReport, type ReportListItem } from "@/lib/api/reports"
+import { getWorstClip } from "@/lib/api/interview"
+import type { InterviewReportResponse, DebateReportResponse } from "@/types/report"
 
-type InterviewType = 'tech' | 'human'
+function ScoreRing({ score, size = 64 }: { score: number; size?: number }) {
+  const radius = (size - 8) / 2
+  const circumference = 2 * Math.PI * radius
+  const offset = circumference - (score / 100) * circumference
+  const color = score >= 80 ? "#6B9E7E" : score >= 60 ? "#C4A24E" : "#C45C5C"
 
-interface Report {
-  id: string
-  company: string
-  role: string
-  type: InterviewType
-  date: string
-  dayOfWeek: string
-  duration: number
-  totalScore: number
-  resumeId: string
-  feedbackPreview: string
-  scores: {
-    label: string
-    value: number
-  }[]
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none" stroke="currentColor" strokeWidth={3}
+          className="text-border/30"
+        />
+        <circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none" stroke={color} strokeWidth={3}
+          strokeDasharray={circumference} strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="transition-all duration-700"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-lg font-bold" style={{ color }}>{score}</span>
+      </div>
+    </div>
+  )
 }
 
-interface UpcomingInterview {
-  id: string
-  company: string
-  role: string
-  type: InterviewType
-  date: string
-  dday: number
-  resumeId: string
-  resumeFilename: string
-  previousReports: {
-    type: InterviewType
-    date: string
-    score: number
-  }[]
-  aiFeedback: string
-}
-
-const upcomingInterviews: UpcomingInterview[] = [
-  {
-    id: "1",
-    company: "카카오",
-    role: "AI 엔지니어",
-    type: "tech",
-    date: "2026.05.20 14:00",
-    dday: -3,
-    resumeId: "kakao-ai",
-    resumeFilename: "카카오_AI엔지니어_이력서.pdf",
-    previousReports: [
-      { type: "tech", date: "2026.03.15", score: 82 },
-      { type: "human", date: "2026.03.20", score: 88 },
-    ],
-    aiFeedback: "지난 면접 대비 기술 이해도 상승. 아키텍처 설계 부분의 깊이를 더 높이면 합격 가능성 증대.",
-  },
-  {
-    id: "2",
-    company: "토스",
-    role: "iOS 개발자",
-    type: "human",
-    date: "2026.05.24 10:00",
-    dday: -7,
-    resumeId: "toss-ios",
-    resumeFilename: "토스_iOS개발자_이력서.pdf",
-    previousReports: [
-      { type: "tech", date: "2026.03.10", score: 75 },
-    ],
-    aiFeedback: "팀워크와 커뮤니케이션 강점. 개인 프로젝트 경험 스토리텔링을 더 구체적으로 준비하세요.",
-  },
-  {
-    id: "3",
-    company: "쿠팡",
-    role: "백엔드 개발자",
-    type: "tech",
-    date: "2026.05.31 15:00",
-    dday: -14,
-    resumeId: "samsung-sw",
-    resumeFilename: "삼성_SW개발자_이력서.pdf",
-    previousReports: [],
-    aiFeedback: "첫 면접입니다. 백엔드 기초 개념을 충분히 이해하고 있으니 시스템 디자인 부분 집중 연습 추천.",
-  },
-]
-
-const pastReports: Report[] = [
-  {
-    id: "r1",
-    company: "삼성전자",
-    role: "프론트엔드",
-    type: "tech",
-    date: "2026.03.28",
-    dayOfWeek: "금",
-    duration: 47,
-    totalScore: 87,
-    resumeId: "samsung-sw",
-    feedbackPreview: "React 렌더링 최적화 우수. CSS 성능 구조체 부분 → repaint/reflow 에서 준비 필요",
-    scores: [
-      { label: "기술 이해", value: 89 },
-      { label: "답변 구조", value: 85 },
-      { label: "논리력", value: 87 },
-      { label: "자신감", value: 86 },
-    ],
-  },
-  {
-    id: "r2",
-    company: "카카오",
-    role: "백엔드",
-    type: "tech",
-    date: "2026.03.26",
-    dayOfWeek: "수",
-    duration: 38,
-    totalScore: 92,
-    resumeId: "kakao-ai",
-    feedbackPreview: "분산 시스템 설계 탁월. 트레이드오프 분석과 실제 구현 경험이 모두 우수.",
-    scores: [
-      { label: "기술 이해", value: 94 },
-      { label: "답변 구조", value: 92 },
-      { label: "논리력", value: 90 },
-      { label: "자신감", value: 91 },
-    ],
-  },
-  {
-    id: "r3",
-    company: "네이버",
-    role: "풀스택",
-    type: "human",
-    date: "2026.03.24",
-    dayOfWeek: "월",
-    duration: 42,
-    totalScore: 78,
-    resumeId: "naver-backend",
-    feedbackPreview: "자기소개·지원동기 매끄러움. 팀 갈등 해결 예시 → 더 구체적이고 주인의식 드러내기",
-    scores: [
-      { label: "커뮤니케이션", value: 82 },
-      { label: "성장 지향", value: 76 },
-      { label: "팀워크", value: 75 },
-      { label: "자신감", value: 79 },
-    ],
-  },
-  {
-    id: "r4",
-    company: "삼성전자",
-    role: "프론트엔드",
-    type: "human",
-    date: "2026.03.22",
-    dayOfWeek: "토",
-    duration: 30,
-    totalScore: 85,
-    resumeId: "samsung-sw",
-    feedbackPreview: "자기소개·지원동기 경험에서 STAR 기법 활용 부족. 구체적 수치/결과 준비하세요.",
-    scores: [
-      { label: "커뮤니케이션", value: 87 },
-      { label: "성장 지향", value: 84 },
-      { label: "팀워크", value: 84 },
-      { label: "자신감", value: 84 },
-    ],
-  },
-  {
-    id: "r5",
-    company: "라인",
-    role: "백엔드",
-    type: "tech",
-    date: "2026.03.15",
-    dayOfWeek: "일",
-    duration: 60,
-    totalScore: 71,
-    resumeId: "naver-backend",
-    feedbackPreview: "기술 깊이의 비즈니스 영향 설명 약함. 임원 수준 맥락 이해 연습 추천.",
-    scores: [
-      { label: "기술 이해", value: 74 },
-      { label: "답변 구조", value: 68 },
-      { label: "논리력", value: 70 },
-      { label: "자신감", value: 72 },
-    ],
-  },
-]
-
-const resumes = [
-  "전체 자소서",
-  "네이버_백엔드_이력서.pdf",
-  "카카오_AI엔지니어_이력서.pdf",
-  "삼성_SW개발자_이력서.pdf",
-]
-
-function getScoreColor(score: number) {
-  if (score >= 90) return "text-emerald-600"
-  if (score >= 80) return "text-amber-600"
-  return "text-red-600"
-}
-
-function getDdayBadgeColor(dday: number) {
-  if (dday <= -3) return "bg-red-50 text-red-700"
-  if (dday <= -7) return "bg-amber-50 text-amber-700"
-  return "bg-blue-50 text-blue-700"
-}
-
-function getInterviewTypeBg(type: InterviewType) {
-  return type === "tech" ? "bg-blue-50 text-blue-700" : "bg-pink-50 text-pink-700"
+function SkillBar({ label, value, delay = 0 }: { label: string; value: number; delay?: number }) {
+  const color = value >= 85 ? "bg-emerald-500" : value >= 75 ? "bg-amber-500" : "bg-red-400"
+  return (
+    <div className="group">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">{label}</span>
+        <span className="text-xs font-bold text-foreground">{value}</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-muted/50">
+        <div
+          className={cn("h-full rounded-full transition-all duration-700", color)}
+          style={{ width: `${value}%`, transitionDelay: `${delay}ms` }}
+        />
+      </div>
+    </div>
+  )
 }
 
 export default function ReportsPage() {
-  const [expandedUpcoming, setExpandedUpcoming] = useState<string | null>(null)
-  const [expandedPast, setExpandedPast] = useState<string | null>(null)
-  const [selectedResume, setSelectedResume] = useState("전체 자소서")
-  const [selectedType, setSelectedType] = useState<"all" | "tech" | "human">("all")
+  const [reports, setReports] = useState<ReportListItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [expandedReport, setExpandedReport] = useState<InterviewReportResponse | null>(null)
+  const [expandedDebateReport, setExpandedDebateReport] = useState<DebateReportResponse | null>(null)
+  const [expandedLoading, setExpandedLoading] = useState(false)
+  const [worstClipUrl, setWorstClipUrl] = useState<string | null>(null)
+  const [selectedType, setSelectedType] = useState<"all" | "interview" | "debate">("all")
   const [searchQuery, setSearchQuery] = useState("")
+  const [page, setPage] = useState(0)
 
-  const filteredReports = pastReports.filter(report => {
-    const resumeMatch = selectedResume === "전체 자소서" || report.resumeId === selectedResume
-    const typeMatch = selectedType === "all" || (selectedType === "tech" ? report.type === "tech" : report.type === "human")
-    const searchMatch = searchQuery === "" || 
-      report.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      report.role.toLowerCase().includes(searchQuery.toLowerCase())
-    return resumeMatch && typeMatch && searchMatch
-  })
+  useEffect(() => {
+    async function fetchReports() {
+      setLoading(true)
+      try {
+        const data = await getReportList({
+          type: selectedType,
+          page,
+          size: 10,
+          q: searchQuery || undefined,
+        })
+        setReports(data.items)
+      } catch {
+        setReports([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchReports()
+  }, [selectedType, page, searchQuery])
+
+  const handleExpand = async (report: ReportListItem) => {
+    if (expandedId === report.domainId) {
+      setExpandedId(null)
+      setExpandedReport(null)
+      setExpandedDebateReport(null)
+      setWorstClipUrl(null)
+      return
+    }
+    setExpandedId(report.domainId)
+    setExpandedLoading(true)
+    setExpandedReport(null)
+    setExpandedDebateReport(null)
+    setWorstClipUrl(null)
+    try {
+      if (report.reportType === "debate") {
+        const debateReport = await getDebateReport(report.domainId)
+        setExpandedDebateReport(debateReport)
+      } else {
+        const [interviewReport, clipUrl] = await Promise.all([
+          getInterviewReport(report.domainId),
+          getWorstClip(report.domainId).catch(() => null),
+        ])
+        setExpandedReport(interviewReport)
+        setWorstClipUrl(clipUrl)
+      }
+    } catch {
+      setExpandedReport(null)
+      setExpandedDebateReport(null)
+    } finally {
+      setExpandedLoading(false)
+    }
+  }
+
+  const getTypeLabel = (type: string) => type === "interview" ? "1:1 면접" : "토론 면접"
+  const getTypeStyle = (type: string) =>
+    type === "interview"
+      ? "border-primary/30 bg-primary/10 text-primary"
+      : "border-accent/30 bg-accent/10 text-accent"
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr)
+    const dayNames = ["일", "월", "화", "수", "목", "금", "토"]
+    return `${d.getMonth() + 1}.${d.getDate()} (${dayNames[d.getDay()]})`
+  }
 
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
       <main className="w-full overflow-auto lg:ml-64">
         <MobileHeader />
-        <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-          {/* Header */}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-            <Link href="/" className="flex items-center gap-1 hover:text-foreground">
-              <ChevronLeft className="h-4 w-4" />
-              돌아가기
-            </Link>
+        <div className="sticky top-14 z-30 border-b border-border/30 bg-background/95 backdrop-blur-sm lg:top-0">
+          <div className="px-4 pt-8 pb-5 sm:px-6 lg:px-8">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">분석 리포트</h1>
+            <p className="text-sm text-muted-foreground mt-1">AI가 분석한 면접 성과와 개선점을 확인하세요</p>
+          </div>
+        </div>
+        <div className="space-y-8 px-4 py-4 sm:px-6 lg:px-8">
+          {/* Quick Stats */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: "총 면접", value: reports.length },
+              { label: "평균 점수", value: reports.length > 0 ? Math.round(reports.reduce((s, r) => s + r.totalScore, 0) / reports.length) : "--" },
+              { label: "최고 점수", value: reports.length > 0 ? Math.max(...reports.map(r => r.totalScore)) : "--" },
+              { label: "분석 완료", value: reports.filter(r => r.totalScore > 0).length },
+            ].map((stat) => (
+              <div key={stat.label} className="rounded-xl border border-border bg-white p-4 card-hover">
+                <div className="text-2xl font-bold text-foreground">{stat.value}</div>
+                <div className="text-xs text-muted-foreground mt-1">{stat.label}</div>
+              </div>
+            ))}
           </div>
 
-          <div className="flex flex-col gap-2">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">리포트</h1>
-            <p className="text-sm text-muted-foreground">오늘 기준 {new Date().toLocaleDateString('ko-KR')}</p>
-          </div>
-
-          {/* Section 1: Upcoming Interviews */}
-          <div className="space-y-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">다가오는 면접 — 종합 분석</h2>
-            <div className="space-y-2">
-              {upcomingInterviews.map(interview => (
-                <div key={interview.id} className="border border-border rounded-lg overflow-hidden hover:border-primary/30 transition-colors">
-                  <button
-                    onClick={() => setExpandedUpcoming(expandedUpcoming === interview.id ? null : interview.id)}
-                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-secondary/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0 text-left">
-                      <Badge className={getDdayBadgeColor(interview.dday)}>D{interview.dday}</Badge>
-                      <span className="font-medium text-foreground">{interview.company}</span>
-                      <Badge className={getInterviewTypeBg(interview.type)}>
-                        {interview.type === "tech" ? "기술" : "인성"}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground truncate">{interview.role} · {interview.date} · {interview.resumeFilename}</span>
-                    </div>
-                    <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform flex-shrink-0", expandedUpcoming === interview.id && "rotate-180")} />
-                  </button>
-
-                  {expandedUpcoming === interview.id && (
-                    <div className="bg-secondary/20 px-4 py-4 border-t border-border space-y-4">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-medium text-foreground">이전 {interview.company} {interview.type === 'tech' ? '기술' : '인성'}면접 기반 분석</span>
-                      </div>
-
-                      {interview.previousReports.length > 0 && (
-                        <div className="grid grid-cols-2 gap-2">
-                          {interview.previousReports.map((prev, idx) => (
-                            <div key={idx} className="bg-surface rounded-lg p-3 border border-border/50">
-                              <div className="text-xs text-muted-foreground mb-1">{prev.type === 'tech' ? '기술' : '인성'}</div>
-                              <div className="text-xs text-muted-foreground mb-2">{prev.date}</div>
-                              <div className={cn("text-lg font-medium", getScoreColor(prev.score))}>{prev.score}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <p className="text-sm text-muted-foreground leading-relaxed">{interview.aiFeedback}</p>
-
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="text-xs">집중 연습</Button>
-                        <Button size="sm" variant="outline" className="text-xs">전체 분석</Button>
-                      </div>
-                    </div>
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex gap-1 rounded-xl border border-border bg-white p-1 h-11 items-center">
+              {(["all", "interview", "debate"] as const).map(type => (
+                <button
+                  key={type}
+                  onClick={() => { setSelectedType(type); setPage(0) }}
+                  className={cn(
+                    "rounded-lg px-4 py-1.5 text-sm font-medium transition-all",
+                    selectedType === type
+                      ? "bg-primary text-white shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
                   )}
-                </div>
+                >
+                  {type === "all" ? "전체" : type === "interview" ? "면접" : "토론"}
+                </button>
               ))}
             </div>
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="회사, 직무 검색..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(0) }}
+                className="w-full h-11 rounded-xl border border-border bg-white pl-10 pr-8 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none transition-colors"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Section 2: Past Reports */}
-          <div className="space-y-4 pt-6 border-t border-border">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">지난 면접 기록</h2>
-                {filteredReports.length > 0 && <span className="text-xs text-muted-foreground">{filteredReports.length}건</span>}
-              </div>
-
-              <div className="flex gap-2 flex-wrap">
-                <select
-                  value={selectedResume}
-                  onChange={(e) => setSelectedResume(e.target.value)}
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground appearance-none cursor-pointer hover:border-primary/30 focus:border-primary focus:outline-none"
-                >
-                  {resumes.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-
-                <div className="flex gap-1">
-                  {(["all", "tech", "human"] as const).map(type => (
-                    <Button
-                      key={type}
-                      size="sm"
-                      variant={selectedType === type ? "default" : "outline"}
-                      className="text-xs"
-                      onClick={() => setSelectedType(type)}
-                    >
-                      {type === "all" ? "전체" : type === "tech" ? "기술" : "인성"}
-                    </Button>
-                  ))}
-                </div>
-
-                <div className="relative flex-1 min-w-[200px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="회사, 직무 검색"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-8 py-2 rounded-lg border border-border bg-surface text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none transition-colors"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery("")}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
+          {/* Report Cards */}
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-
-            {filteredReports.length === 0 ? (
-              <div className="rounded-lg border-2 border-dashed border-border bg-secondary/20 py-12 text-center">
-                <Search className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">검색 결과가 없습니다</p>
+          ) : reports.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border py-16 text-center">
+              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-muted/50">
+                <FontAwesomeIcon icon={faLightbulb} className="h-6 w-6 text-muted-foreground" />
               </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredReports.map((report, idx) => (
-                  <div key={report.id} className="flex gap-4">
-                    {/* Timeline */}
-                    <div className="flex flex-col items-center gap-2 pt-1">
-                      <div className="w-14 text-right">
-                        <div className="font-medium text-foreground">{report.date}</div>
-                        <div className="text-xs text-muted-foreground">{report.dayOfWeek}</div>
-                      </div>
-                      <div className={cn(
-                        "w-3 h-3 rounded-full border-2",
-                        report.type === "tech" ? "border-blue-500 bg-white" : "border-pink-500 bg-white"
-                      )} />
-                      {idx < filteredReports.length - 1 && <div className="w-px flex-1 bg-border" />}
+              <p className="text-lg font-medium text-foreground">아직 리포트가 없습니다</p>
+              <p className="mt-1 text-sm text-muted-foreground">면접 연습을 시작하면 AI가 상세 분석 리포트를 생성합니다</p>
+              <Link href="/dashboard">
+                <Button className="mt-4 gap-2 bg-primary text-white">면접 시작하기</Button>
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {reports.map((report, idx) => (
+                <div
+                  key={report.domainId}
+                  className={cn(
+                    "group overflow-hidden rounded-xl border transition-all duration-300",
+                    expandedId === report.domainId
+                      ? "border-primary/30 bg-white shadow-lg shadow-primary/5"
+                      : "border-border bg-white hover:border-primary/20 hover:shadow-sm"
+                  )}
+                >
+                  {/* Card Header */}
+                  <button
+                    onClick={() => handleExpand(report)}
+                    className="flex w-full items-center gap-4 p-4 text-left"
+                  >
+                    {/* Company Initial */}
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-sm font-semibold text-muted-foreground shrink-0">
+                      {report.companyName.slice(0, 1)}
                     </div>
 
-                    {/* Card */}
-                    <div className="flex-1 pb-4">
-                      <button
-                        onClick={() => setExpandedPast(expandedPast === report.id ? null : report.id)}
-                        className="w-full text-left rounded-lg border border-border p-3 hover:border-primary/30 hover:bg-secondary/50 transition-all"
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
-                              {report.company.slice(0, 1)}
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-foreground">{report.companyName}</span>
+                        <Badge variant="outline" className={cn("text-[10px] font-medium", getTypeStyle(report.reportType))}>
+                          {getTypeLabel(report.reportType)}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span>{report.jobPosition}</span>
+                        <span className="h-1 w-1 rounded-full bg-border" />
+                        <span>{formatDate(report.date)}</span>
+                      </div>
+                    </div>
+
+                    {/* Score */}
+                    <ScoreRing score={report.totalScore} size={52} />
+
+                    <ChevronDown className={cn(
+                      "h-4 w-4 text-muted-foreground transition-transform duration-300 shrink-0",
+                      expandedId === report.domainId && "rotate-180"
+                    )} />
+                  </button>
+
+                  {/* Expanded Detail */}
+                  {expandedId === report.domainId && (
+                    <div className="border-t border-border p-5">
+                      {expandedLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                          <span className="ml-2 text-sm text-muted-foreground">분석 리포트 불러오는 중...</span>
+                        </div>
+                      ) : expandedReport === null && expandedDebateReport === null ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="text-center">
+                            <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
+                              <FontAwesomeIcon icon={faBrain} className="h-5 w-5 text-amber-500" />
                             </div>
-                            <div>
-                              <div className="font-medium text-foreground">{report.company}</div>
-                              <div className="text-xs text-muted-foreground">{report.role}</div>
-                            </div>
-                            <Badge className={getInterviewTypeBg(report.type)} variant="outline">
-                              {report.type === "tech" ? "기술" : "인성"}
-                            </Badge>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className={cn("text-lg font-medium", getScoreColor(report.totalScore))}>
-                              {report.totalScore}
-                            </span>
-                            <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", expandedPast === report.id && "rotate-180")} />
+                            <p className="text-sm font-medium text-foreground">리포트 생성 중</p>
+                            <p className="text-xs text-muted-foreground">AI가 분석을 진행하고 있습니다. 잠시 후 다시 확인해주세요.</p>
                           </div>
                         </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2">{report.feedbackPreview}</p>
-                      </button>
-
-                      {expandedPast === report.id && (
-                        <div className="mt-2 rounded-lg border border-border bg-secondary/30 p-4 space-y-4">
-                          <div className="space-y-3">
-                            {report.scores.map((score, idx) => (
-                              <div key={idx} className="space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs font-medium text-foreground w-14 text-right">{score.label}</span>
-                                  <div className="flex-1 mx-2 h-1 bg-border rounded-full overflow-hidden">
-                                    <div
-                                      className={cn(
-                                        "h-full transition-all",
-                                        score.value >= 85 ? "bg-emerald-500" : score.value >= 75 ? "bg-amber-500" : "bg-red-500"
-                                      )}
-                                      style={{ width: `${score.value}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-xs font-medium text-foreground w-6 text-right">{score.value}</span>
-                                </div>
-                              </div>
-                            ))}
+                      ) : expandedDebateReport ? (
+                        <div className="space-y-6">
+                          {/* Overall */}
+                          <div className="rounded-xl bg-gradient-to-br from-primary/5 to-accent/5 p-4">
+                            <h4 className="mb-2 text-sm font-semibold text-foreground flex items-center gap-2">
+                              <FontAwesomeIcon icon={faLightbulb} className="h-3.5 w-3.5 text-amber-500" />
+                              종합 평가
+                            </h4>
+                            <p className="text-sm leading-relaxed text-muted-foreground">{expandedDebateReport.overall}</p>
                           </div>
 
+                          {/* Turn Feedback */}
+                          {expandedDebateReport.turnFeedback.length > 0 && (
+                            <div className="space-y-3">
+                              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                <FontAwesomeIcon icon={faChartLine} className="h-3.5 w-3.5 text-primary" />
+                                라운드별 피드백
+                              </h4>
+                              {expandedDebateReport.turnFeedback.map((tf, i) => (
+                                <div key={i} className="rounded-lg border border-border/50 p-3">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <Badge variant="outline" className="text-xs">{tf.roundType}</Badge>
+                                    <span className="text-xs font-bold text-foreground">{tf.weightedScore}점</span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">{tf.feedback}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Strategy Analysis */}
+                          {expandedDebateReport.strategyAnalysis && (
+                            <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
+                              <h4 className="mb-2 text-sm font-semibold text-blue-600 flex items-center gap-2">
+                                <FontAwesomeIcon icon={faBrain} className="h-3.5 w-3.5" />
+                                전략 분석
+                              </h4>
+                              <p className="text-sm text-muted-foreground">{expandedDebateReport.strategyAnalysis}</p>
+                            </div>
+                          )}
+
+                          {/* Strengths & Improvements */}
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                              <h4 className="mb-2 text-sm font-semibold text-emerald-600 flex items-center gap-2">
+                                <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
+                                강점
+                              </h4>
+                              <p className="text-sm text-muted-foreground">{expandedDebateReport.strengths}</p>
+                            </div>
+                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                              <h4 className="mb-2 text-sm font-semibold text-amber-600 flex items-center gap-2">
+                                <FontAwesomeIcon icon={faArrowTrendUp} className="h-3.5 w-3.5" />
+                                개선점
+                              </h4>
+                              <p className="text-sm text-muted-foreground">{expandedDebateReport.improvements}</p>
+                            </div>
+                          </div>
+
+                          {/* Final Advice */}
+                          {expandedDebateReport.finalAdvice && (
+                            <div className="rounded-xl bg-muted/30 p-4">
+                              <p className="text-sm text-muted-foreground">{expandedDebateReport.finalAdvice}</p>
+                            </div>
+                          )}
+                        </div>
+                      ) : expandedReport ? (
+                        <div className="space-y-6">
+                          {/* Overall & Scores */}
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="rounded-xl bg-gradient-to-br from-primary/5 to-accent/5 p-4">
+                              <h4 className="mb-2 text-sm font-semibold text-foreground flex items-center gap-2">
+                                <FontAwesomeIcon icon={faLightbulb} className="h-3.5 w-3.5 text-amber-500" />
+                                종합 평가
+                              </h4>
+                              <p className="text-sm leading-relaxed text-muted-foreground">{expandedReport.overall}</p>
+                            </div>
+                            <div className="space-y-3">
+                              {expandedReport.itemAverages && Object.entries(expandedReport.itemAverages).map(([key, val], i) => (
+                                <SkillBar key={key} label={key} value={val as number} delay={i * 100} />
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Strengths & Improvements */}
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                              <h4 className="mb-2 text-sm font-semibold text-emerald-600 flex items-center gap-2">
+                                <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
+                                강점
+                              </h4>
+                              <p className="text-sm text-muted-foreground">{expandedReport.strengths}</p>
+                            </div>
+                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                              <h4 className="mb-2 text-sm font-semibold text-amber-600 flex items-center gap-2">
+                                <FontAwesomeIcon icon={faArrowTrendUp} className="h-3.5 w-3.5" />
+                                개선점
+                              </h4>
+                              <p className="text-sm text-muted-foreground">{expandedReport.improvements}</p>
+                            </div>
+                          </div>
+
+                          {/* Worst Clip */}
+                          {worstClipUrl && (
+                            <div className="rounded-xl border border-border/50 p-4">
+                              <h4 className="mb-2 text-sm font-semibold text-foreground">개선 필요 구간</h4>
+                              <video
+                                src={worstClipUrl}
+                                controls
+                                className="w-full rounded-lg"
+                              />
+                            </div>
+                          )}
+
+                          {/* Actions */}
                           <div className="flex gap-2 pt-2">
-                            <Button size="sm" variant="outline" className="text-xs gap-1">
+                            <Button size="sm" variant="outline" className="text-xs gap-1.5">
                               <RotateCcw className="h-3 w-3" />
                               재연습
                             </Button>
-                            <Button size="sm" variant="outline" className="text-xs gap-1">
+                            <Button size="sm" variant="outline" className="text-xs gap-1.5">
                               <BarChart2 className="h-3 w-3" />
                               상세 분석
                             </Button>
                           </div>
                         </div>
-                      )}
+                      ) : null}
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </main>
     </div>
   )
 }
-

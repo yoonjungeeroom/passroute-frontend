@@ -12,31 +12,34 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Slider } from "@/components/ui/slider"
-import { Switch } from "@/components/ui/switch"
+
 import { Label } from "@/components/ui/label"
-import { 
-  FileText, 
-  UserRound, 
-  Users, 
-  ArrowRight, 
-  ArrowLeft, 
-  Check, 
+import {
+  UserRound,
+  Users,
+  ArrowRight,
+  ArrowLeft,
+  Check,
   Mic,
   Briefcase,
-  AlertTriangle,
   Crown,
   Heart,
   Code,
-  Users2,
   ChevronDown,
   ChevronUp,
   Settings2,
   Building2,
-  Sparkles,
+  CheckCircle,
+  Loader2,
   Dumbbell,
-  Swords
+  Swords,
+  FileText,
+  FolderOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { setupInterview, startInterview } from "@/lib/api/interview"
+import { getSelfIntroList, type SelfIntroResponse } from "@/lib/api/self-intro"
+import { getDocumentList, type DocumentItem } from "@/lib/api/documents"
 
 interface InterviewModalProps {
   open: boolean
@@ -52,11 +55,11 @@ interface PrefillData {
   personas: string[]
 }
 
-const selfIntroductions = [
-  { id: 1, company: "네이버", position: "백엔드 개발자", experience: "신입", questionCount: 5, updatedAt: "2024.03.15" },
-  { id: 2, company: "카카오", position: "AI 엔지니어", experience: "경력 2년", questionCount: 4, updatedAt: "2024.03.10" },
-  { id: 3, company: "삼성전자", position: "SW 개발자", experience: "신입", questionCount: 6, updatedAt: "2024.03.05" },
-]
+const careerLabels: Record<string, string> = {
+  INTERN: "인턴",
+  JUNIOR: "신입",
+  SENIOR: "경력",
+}
 
 const interviewStages = [
   { id: "personality", title: "인성면접", description: "가치관, 성격, 조직 적합성" },
@@ -72,8 +75,8 @@ const interviewModes = [
   },
   {
     id: "group",
-    title: "그룹 면접 (다대일)",
-    description: "면접관 2~3명이 함께 진행",
+    title: "토론 면접",
+    description: "AI 경쟁자와 함께 토론 형식으로 진행",
     icon: Users,
   },
 ]
@@ -98,65 +101,53 @@ const practiceModes = [
 interface PersonaSettings {
   pressure: number
   followUp: number
-  difficulty: number
-  warmth: number
-  interrupt: boolean
+  difficulty: "EASY" | "NORMAL" | "HARD"
 }
 
-const personas = [
+const personas: {
+  id: string
+  title: string
+  subtitle: string
+  icon: typeof Briefcase
+  description: string
+  defaults: PersonaSettings
+  color: string
+}[] = [
   {
-    id: "practical",
+    id: "TEAM_LEAD",
     title: "실무검증형",
     subtitle: "현업 실무자/팀장",
     icon: Briefcase,
     description: "기술 선택 이유, 프로젝트 진위, 문제 해결",
-    defaults: { pressure: 6, followUp: 7, difficulty: 7, warmth: 4, interrupt: false },
-    color: "bg-blue-500",
+    defaults: { pressure: 6, followUp: 5, difficulty: "HARD" },
+    color: "bg-foreground",
   },
   {
-    id: "pressure",
-    title: "압박검증형",
-    subtitle: "날카로운 반박 중심",
-    icon: AlertTriangle,
-    description: "스트레스 대응, 논리 일관성, 멘탈 안정성",
-    defaults: { pressure: 9, followUp: 8, difficulty: 7, warmth: 2, interrupt: true },
-    color: "bg-red-500",
-  },
-  {
-    id: "executive",
+    id: "EXECUTIVE",
     title: "임원형",
     subtitle: "사업부장/본부장",
     icon: Crown,
     description: "동기, 태도, 성장 가능성, 조직 적합성",
-    defaults: { pressure: 4, followUp: 5, difficulty: 5, warmth: 7, interrupt: false },
-    color: "bg-amber-500",
+    defaults: { pressure: 5, followUp: 4, difficulty: "NORMAL" },
+    color: "bg-foreground",
   },
   {
-    id: "hr",
-    title: "대화형인성",
+    id: "HR_MANAGER",
+    title: "인성면접관",
     subtitle: "HR/문화 적합성",
     icon: Heart,
     description: "갈등 해결, 피드백 수용, 가치관",
-    defaults: { pressure: 2, followUp: 4, difficulty: 3, warmth: 9, interrupt: false },
-    color: "bg-pink-500",
+    defaults: { pressure: 3, followUp: 4, difficulty: "EASY" },
+    color: "bg-foreground",
   },
   {
-    id: "technical",
-    title: "기술검증형",
+    id: "TECH_INTERVIEWER",
+    title: "기술면접관",
     subtitle: "CTO/테크리드",
     icon: Code,
     description: "아키텍처, 트레이드오프, 예외 상황 대응",
-    defaults: { pressure: 6, followUp: 9, difficulty: 9, warmth: 4, interrupt: false },
-    color: "bg-violet-500",
-  },
-  {
-    id: "collaboration",
-    title: "협업검증형",
-    subtitle: "팀장/현업 리더",
-    icon: Users2,
-    description: "책임 분담, 커뮤니케이션, 리더십",
-    defaults: { pressure: 5, followUp: 6, difficulty: 5, warmth: 6, interrupt: false },
-    color: "bg-green-500",
+    defaults: { pressure: 6, followUp: 5, difficulty: "HARD" },
+    color: "bg-foreground",
   },
 ]
 
@@ -171,11 +162,34 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [settings, setSettings] = useState<PersonaSettings>({
     pressure: 5,
-    followUp: 5,
-    difficulty: 5,
-    warmth: 5,
-    interrupt: false,
+    followUp: 3,
+    difficulty: "NORMAL" as const,
   })
+  const [interviewCount, setInterviewCount] = useState(5)
+  const [starting, setStarting] = useState(false)
+  const [selfIntros, setSelfIntros] = useState<SelfIntroResponse[]>([])
+  const [loadingIntros, setLoadingIntros] = useState(false)
+  const [resumes, setResumes] = useState<DocumentItem[]>([])
+  const [portfolios, setPortfolios] = useState<DocumentItem[]>([])
+  const [selectedResume, setSelectedResume] = useState<number | null>(null)
+  const [selectedPortfolio, setSelectedPortfolio] = useState<number | null>(null)
+  const [loadingDocs, setLoadingDocs] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setLoadingIntros(true)
+      getSelfIntroList().then(setSelfIntros).catch(() => setSelfIntros([])).finally(() => setLoadingIntros(false))
+
+      setLoadingDocs(true)
+      Promise.all([
+        getDocumentList("RESUME").catch(() => []),
+        getDocumentList("PORTFOLIO").catch(() => []),
+      ]).then(([r, p]) => {
+        setResumes(r)
+        setPortfolios(p)
+      }).finally(() => setLoadingDocs(false))
+    }
+  }, [open])
 
   // Prefill data when modal opens
   useEffect(() => {
@@ -193,7 +207,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
     if (selectedPersonas.length > 0) {
       const firstPersona = personas.find(p => p.id === selectedPersonas[0])
       if (firstPersona) {
-        setSettings(firstPersona.defaults)
+        setSettings({ ...firstPersona.defaults })
       }
     }
   }, [selectedPersonas])
@@ -207,6 +221,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
       setSelectedMode(null)
       setSelectedPracticeMode("practice")
       setSelectedPersonas([])
+      setSelectedResume(null)
+      setSelectedPortfolio(null)
       setShowAdvanced(false)
     }, 200)
   }
@@ -248,7 +264,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
     (step === 4) || // Persona is optional
     step === 5
 
-  const currentIntro = selfIntroductions.find(i => i.id === selectedIntro)
+  const currentIntro = selfIntros.find(i => i.id === selectedIntro)
   const currentStage = interviewStages.find(s => s.id === selectedStage)
   const currentMode = interviewModes.find(m => m.id === selectedMode)
 
@@ -262,7 +278,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto border-border/50 bg-card sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto border-border bg-card sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold text-foreground">
             면접 시작하기
@@ -282,7 +298,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
               className={cn(
                 "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition-all duration-300",
                 s === step
-                  ? "bg-gradient-to-br from-primary to-violet-600 text-white shadow-lg shadow-primary/25"
+                  ? "bg-primary text-white"
                   : s < step
                   ? "bg-primary/20 text-primary hover:bg-primary/30 cursor-pointer"
                   : "bg-secondary text-muted-foreground cursor-not-allowed"
@@ -304,7 +320,15 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
               <p className="mb-4 text-sm text-muted-foreground">
                 면접에 사용할 자기소개서를 선택해주세요
               </p>
-              {selfIntroductions.map((intro) => (
+              {loadingIntros ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                </div>
+              ) : selfIntros.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  자기소개서가 없습니다. 먼저 자기소개서를 작성해주세요.
+                </div>
+              ) : selfIntros.map((intro) => (
                 <div
                   key={intro.id}
                   onClick={() => setSelectedIntro(intro.id)}
@@ -312,32 +336,108 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                     "flex cursor-pointer items-center gap-4 rounded-xl border p-4 transition-all duration-300",
                     selectedIntro === intro.id
                       ? "border-primary/50 bg-primary/10"
-                      : "border-border/50 hover:border-primary/30 hover:bg-secondary/50"
+                      : "border-border hover:border-primary/30 hover:bg-secondary/50"
                   )}
                 >
                   <div className={cn(
                     "flex h-10 w-10 items-center justify-center rounded-lg",
                     selectedIntro === intro.id
-                      ? "bg-gradient-to-br from-primary to-violet-600 text-white shadow-lg shadow-primary/25"
+                      ? "bg-primary text-white"
                       : "bg-secondary text-muted-foreground"
                   )}>
                     <Building2 className="h-5 w-5" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="font-semibold text-foreground">{intro.company}</p>
-                      <Badge variant="outline" className="text-[10px] border-border/50">{intro.experience}</Badge>
+                      <p className="font-semibold text-foreground">{intro.companyName}</p>
+                      <Badge variant="outline" className="text-[10px] border-border">{careerLabels[intro.careerLevel] ?? intro.careerLevel}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      {intro.position} &middot; {intro.questionCount}개 문항
+                      {intro.jobPosition} &middot; {intro.itemCount}개 문항
                     </p>
                   </div>
-                  <span className="text-xs text-muted-foreground">{intro.updatedAt}</span>
                   {selectedIntro === intro.id && (
                     <Badge className="border-primary/30 bg-primary/20 text-primary">선택됨</Badge>
                   )}
                 </div>
               ))}
+
+              {/* 이력서 / 포트폴리오 선택 */}
+              {selectedIntro !== null && (
+                <div className="mt-6 space-y-4 border-t border-border/30 pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    이력서 / 포트폴리오 선택 <span className="text-xs">(선택하지 않으면 대표 문서 사용)</span>
+                  </p>
+
+                  {loadingDocs ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* 이력서 */}
+                      <div className="space-y-2">
+                        <p className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <FileText className="h-3.5 w-3.5" />
+                          이력서
+                        </p>
+                        {resumes.length === 0 ? (
+                          <p className="text-[11px] text-muted-foreground">등록된 이력서가 없습니다</p>
+                        ) : resumes.map((doc) => (
+                          <button
+                            key={doc.id}
+                            onClick={() => setSelectedResume(selectedResume === doc.id ? null : doc.id)}
+                            className={cn(
+                              "flex w-full items-center gap-2 rounded-lg border p-2.5 text-left text-xs transition-all",
+                              selectedResume === doc.id
+                                ? "border-primary/50 bg-primary/10"
+                                : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                            )}
+                          >
+                            <span className="flex-1 truncate text-foreground">{doc.originalFilename}</span>
+                            {doc.isRepresentative && (
+                              <Badge variant="outline" className="text-[9px] shrink-0">대표</Badge>
+                            )}
+                            {selectedResume === doc.id && (
+                              <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* 포트폴리오 */}
+                      <div className="space-y-2">
+                        <p className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <FolderOpen className="h-3.5 w-3.5" />
+                          포트폴리오
+                        </p>
+                        {portfolios.length === 0 ? (
+                          <p className="text-[11px] text-muted-foreground">등록된 포트폴리오가 없습니다</p>
+                        ) : portfolios.map((doc) => (
+                          <button
+                            key={doc.id}
+                            onClick={() => setSelectedPortfolio(selectedPortfolio === doc.id ? null : doc.id)}
+                            className={cn(
+                              "flex w-full items-center gap-2 rounded-lg border p-2.5 text-left text-xs transition-all",
+                              selectedPortfolio === doc.id
+                                ? "border-primary/50 bg-primary/10"
+                                : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                            )}
+                          >
+                            <span className="flex-1 truncate text-foreground">{doc.originalFilename}</span>
+                            {doc.isRepresentative && (
+                              <Badge variant="outline" className="text-[9px] shrink-0">대표</Badge>
+                            )}
+                            {selectedPortfolio === doc.id && (
+                              <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -356,7 +456,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                       "flex flex-col items-center gap-1 rounded-xl border p-3 text-center transition-all duration-200",
                       selectedStage === stage.id
                         ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border/50 text-muted-foreground hover:border-primary/30 hover:bg-secondary/50"
+                        : "border-border text-muted-foreground hover:border-primary/30 hover:bg-secondary/50"
                     )}
                   >
                     <span className="text-sm font-medium">{stage.title}</span>
@@ -369,7 +469,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                 <div className="mt-6 rounded-lg border border-border/30 bg-secondary/30 p-3">
                   <p className="text-xs text-muted-foreground mb-1">선택된 자기소개서</p>
                   <p className="text-sm font-medium text-foreground">
-                    {currentIntro?.company} - {currentIntro?.position}
+                    {currentIntro?.companyName} - {currentIntro?.jobPosition}
                   </p>
                 </div>
               )}
@@ -394,13 +494,13 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                           "relative flex items-center gap-3 rounded-xl border p-4 transition-all duration-200",
                           isSelected
                             ? "border-primary bg-primary/10"
-                            : "border-border/50 hover:border-primary/30 hover:bg-secondary/50"
+                            : "border-border hover:border-primary/30 hover:bg-secondary/50"
                         )}
                       >
                         <div className={cn(
                           "flex h-10 w-10 items-center justify-center rounded-lg",
                           isSelected 
-                            ? `bg-gradient-to-br ${mode.color} text-white` 
+                            ? `${mode.color} text-white` 
                             : "bg-secondary text-muted-foreground"
                         )}>
                           <Icon className="h-5 w-5" />
@@ -431,8 +531,12 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                       <button
                         key={mode.id}
                         onClick={() => {
+                          if (mode.id === "group") {
+                            handleClose()
+                            router.push("/debate")
+                            return
+                          }
                           setSelectedMode(mode.id)
-                          // Reset personas when switching modes
                           if (mode.id === "one-on-one" && selectedPersonas.length > 1) {
                             setSelectedPersonas(selectedPersonas.slice(0, 1))
                           }
@@ -440,14 +544,14 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                         className={cn(
                           "relative flex flex-col items-center gap-3 rounded-2xl border-2 p-6 text-center transition-all duration-300",
                           isSelected
-                            ? "border-primary bg-gradient-to-b from-primary/10 to-primary/5 shadow-lg shadow-primary/10"
-                            : "border-border/50 hover:border-primary/40 hover:bg-secondary/50"
+                            ? "border-primary bg-primary/10 shadow-lg shadow-primary/10"
+                            : "border-border hover:border-primary/40 hover:bg-secondary/50"
                         )}
                       >
                         <div className={cn(
                           "flex h-14 w-14 items-center justify-center rounded-2xl transition-all",
                           isSelected
-                            ? "bg-gradient-to-br from-primary to-violet-600 text-white shadow-lg shadow-primary/30"
+                            ? "bg-primary text-white"
                             : "bg-secondary text-muted-foreground"
                         )}>
                           <Icon className="h-7 w-7" />
@@ -496,7 +600,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                         "relative flex flex-col items-center gap-2 rounded-xl border p-3 text-center transition-all duration-200",
                         isSelected
                           ? "border-primary bg-primary/10"
-                          : "border-border/50 hover:border-primary/30 hover:bg-secondary/50"
+                          : "border-border hover:border-primary/30 hover:bg-secondary/50"
                       )}
                     >
                       {isSelected && selectedMode === "group" && (
@@ -523,7 +627,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                 <div className="mt-4">
                   <button
                     onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="flex w-full items-center justify-between rounded-lg border border-border/50 bg-secondary/30 px-4 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary/50"
+                    className="flex w-full items-center justify-between rounded-lg border border-border bg-secondary/30 px-4 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary/50"
                   >
                     <span className="flex items-center gap-2">
                       <Settings2 className="h-4 w-4" />
@@ -533,41 +637,66 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                   </button>
 
                   {showAdvanced && (
-                    <div className="mt-3 space-y-4 rounded-lg border border-border/50 bg-secondary/20 p-4">
-                      {[
-                        { key: "pressure", label: "압박 강도", low: "편안함", high: "압박" },
-                        { key: "followUp", label: "꼬리질문", low: "적음", high: "많음" },
-                        { key: "difficulty", label: "난이도", low: "기본", high: "심화" },
-                        { key: "warmth", label: "분위기", low: "냉정함", high: "친근함" },
-                      ].map((setting) => (
-                        <div key={setting.key} className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs text-muted-foreground">{setting.label}</Label>
-                            <span className="text-xs font-medium text-foreground">
-                              {settings[setting.key as keyof PersonaSettings] as number}/10
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="w-12 text-[10px] text-muted-foreground">{setting.low}</span>
-                            <Slider
-                              value={[settings[setting.key as keyof PersonaSettings] as number]}
-                              onValueChange={(value) => setSettings(prev => ({ ...prev, [setting.key]: value[0] }))}
-                              max={10}
-                              min={1}
-                              step={1}
-                              className="flex-1"
-                            />
-                            <span className="w-12 text-right text-[10px] text-muted-foreground">{setting.high}</span>
-                          </div>
+                    <div className="mt-3 space-y-4 rounded-lg border border-border bg-secondary/20 p-4">
+                      {/* 압박 강도 (0~10) */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs text-muted-foreground">압박 강도</Label>
+                          <span className="text-xs font-medium text-foreground">{settings.pressure}/10</span>
                         </div>
-                      ))}
+                        <div className="flex items-center gap-2">
+                          <span className="w-12 text-[10px] text-muted-foreground">편안함</span>
+                          <Slider value={[settings.pressure]} onValueChange={(v) => setSettings(prev => ({ ...prev, pressure: v[0] }))} max={10} min={0} step={1} className="flex-1" />
+                          <span className="w-12 text-right text-[10px] text-muted-foreground">압박</span>
+                        </div>
+                      </div>
 
-                      <div className="flex items-center justify-between pt-2">
-                        <Label className="text-xs text-muted-foreground">답변 중 끼어들기</Label>
-                        <Switch
-                          checked={settings.interrupt}
-                          onCheckedChange={(checked) => setSettings(prev => ({ ...prev, interrupt: checked }))}
-                        />
+                      {/* 꼬리질문 (0~5) */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs text-muted-foreground">꼬리질문</Label>
+                          <span className="text-xs font-medium text-foreground">{settings.followUp}/5</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-12 text-[10px] text-muted-foreground">적음</span>
+                          <Slider value={[settings.followUp]} onValueChange={(v) => setSettings(prev => ({ ...prev, followUp: v[0] }))} max={5} min={0} step={1} className="flex-1" />
+                          <span className="w-12 text-right text-[10px] text-muted-foreground">많음</span>
+                        </div>
+                      </div>
+
+                      {/* 난이도 (EASY/NORMAL/HARD) */}
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">난이도</Label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {([["EASY", "기본"], ["NORMAL", "보통"], ["HARD", "심화"]] as const).map(([val, label]) => (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => setSettings(prev => ({ ...prev, difficulty: val }))}
+                              className={cn(
+                                "h-9 rounded-lg border text-xs font-medium transition-all",
+                                settings.difficulty === val
+                                  ? "bg-primary/10 border-primary text-primary"
+                                  : "border-border text-muted-foreground hover:border-primary/30"
+                              )}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 질문 개수 (1~20) */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs text-muted-foreground">질문 개수</Label>
+                          <span className="text-xs font-medium text-foreground">{interviewCount}개</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-12 text-[10px] text-muted-foreground">1개</span>
+                          <Slider value={[interviewCount]} onValueChange={(v) => setInterviewCount(v[0])} max={20} min={1} step={1} className="flex-1" />
+                          <span className="w-12 text-right text-[10px] text-muted-foreground">20개</span>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -580,18 +709,18 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
           {step === 5 && (
             <div className="space-y-6">
               <div className="text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-primary to-violet-600 shadow-lg shadow-primary/30">
-                  <Sparkles className="h-8 w-8 text-white" />
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary">
+                  <CheckCircle className="h-8 w-8 text-white" />
                 </div>
                 <h3 className="text-lg font-semibold text-foreground">면접 준비 완료</h3>
                 <p className="mt-1 text-sm text-muted-foreground">설정을 확인하고 면접을 시작하세요</p>
               </div>
 
-              <div className="space-y-3 rounded-xl border border-border/50 bg-secondary/30 p-4">
+              <div className="space-y-3 rounded-xl border border-border bg-secondary/30 p-4">
                 <div className="flex items-center justify-between py-2 border-b border-border/30">
                   <span className="text-sm text-muted-foreground">자기소개서</span>
                   <span className="text-sm font-medium text-foreground">
-                    {currentIntro?.company} - {currentIntro?.position}
+                    {currentIntro?.companyName} - {currentIntro?.jobPosition}
                   </span>
                 </div>
                 <div className="flex items-center justify-between py-2 border-b border-border/30">
@@ -612,6 +741,18 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                   <span className="text-sm text-muted-foreground">면접 방식</span>
                   <span className="text-sm font-medium text-foreground">{currentMode?.title}</span>
                 </div>
+                <div className="flex items-center justify-between py-2 border-b border-border/30">
+                  <span className="text-sm text-muted-foreground">이력서</span>
+                  <span className="text-sm font-medium text-foreground">
+                    {selectedResume ? resumes.find(d => d.id === selectedResume)?.originalFilename : resumes.find(d => d.isRepresentative)?.originalFilename ?? "없음"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-border/30">
+                  <span className="text-sm text-muted-foreground">포트폴리오</span>
+                  <span className="text-sm font-medium text-foreground">
+                    {selectedPortfolio ? portfolios.find(d => d.id === selectedPortfolio)?.originalFilename : portfolios.find(d => d.isRepresentative)?.originalFilename ?? "없음"}
+                  </span>
+                </div>
                 <div className="flex items-center justify-between py-2">
                   <span className="text-sm text-muted-foreground">면접관 성향</span>
                   <div className="flex gap-1">
@@ -630,15 +771,51 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
               </div>
 
               <Button
-                onClick={() => {
-                  handleClose()
-                  router.push(`/interview?mode=${selectedPracticeMode}`)
+                onClick={async () => {
+                  if (!currentIntro || !selectedStage || !selectedMode) return
+                  setStarting(true)
+                  try {
+                    const interviewType = selectedStage === "technical" ? "TECHNICAL" : "PERSONALITY"
+                    const interviewFormat = selectedMode === "group" ? "DEBATE" : "ONE_ON_ONE"
+
+                    const { roomId } = await setupInterview({
+                      siId: currentIntro.id,
+                      resumeId: selectedResume ?? undefined,
+                      portfolioId: selectedPortfolio ?? undefined,
+                      companyName: currentIntro.companyName,
+                      jobPosition: currentIntro.jobPosition,
+                      interviewType,
+                      interviewMode: selectedPracticeMode.toUpperCase(),
+                      interviewFormat,
+                      aiInterviewer: selectedPersonas[0] || "TEAM_LEAD",
+                      aiCompetitors: interviewFormat === "DEBATE" && selectedPersonas.length > 1 ? selectedPersonas.slice(1).join(",") : undefined,
+                      interviewCount,
+                      difficulty: settings.difficulty,
+                      pressureLevel: settings.pressure,
+                      followupCount: settings.followUp,
+                    })
+
+                    const { sessionId } = await startInterview(roomId)
+                    handleClose()
+                    router.push(`/interview?mode=${selectedPracticeMode}&sessionId=${sessionId}`)
+                  } catch {
+                    setStarting(false)
+                  }
                 }}
-                className="w-full gap-2 py-6 text-base font-semibold text-white shadow-lg hover:opacity-90"
-                style={{ backgroundColor: "#61A4BC" }}
+                disabled={starting}
+                className="w-full gap-2 py-6 text-base font-semibold bg-foreground text-background shadow-lg hover:bg-foreground/90"
               >
-                <Mic className="h-5 w-5" />
-                면접 시작하기
+                {starting ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    면접 준비 중...
+                  </>
+                ) : (
+                  <>
+                    <Mic className="h-5 w-5" />
+                    면접 시작하기
+                  </>
+                )}
               </Button>
             </div>
           )}
@@ -660,8 +837,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
               <Button
                 onClick={handleNext}
                 disabled={!canProceed}
-                className="gap-1 text-white hover:opacity-90"
-                style={{ backgroundColor: canProceed ? "#61A4BC" : undefined }}
+                className="gap-1 bg-foreground text-background hover:bg-foreground/90"
               >
                 {step === 4 ? "확인" : "다음"}
                 <ArrowRight className="h-4 w-4" />

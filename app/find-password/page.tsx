@@ -7,10 +7,10 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
 import { Eye, EyeOff, Loader2, ChevronLeft, Check } from "lucide-react"
 import { phoneVerificationSchema, resetPasswordSchema, type PhoneVerificationInput, type ResetPasswordInput } from "@/lib/auth-schemas"
 import { formatPhoneNumber, parsePhoneNumber, validatePassword } from "@/lib/auth-config"
+import { AuthBrandingPanel } from "@/components/auth-branding-panel"
 
 type Step = "verify" | "reset"
 
@@ -27,12 +27,10 @@ export default function FindPasswordPage() {
   const [verifiedPhone, setVerifiedPhone] = useState("")
   const [verifiedCode, setVerifiedCode] = useState("")
 
-  // Step 1: Verification
   const verifyForm = useForm<PhoneVerificationInput>({
     resolver: zodResolver(phoneVerificationSchema),
   })
 
-  // Step 2: Reset Password
   const resetForm = useForm<ResetPasswordInput>({
     resolver: zodResolver(resetPasswordSchema),
   })
@@ -58,7 +56,7 @@ export default function FindPasswordPage() {
     setIsLoading(true)
     setInlineError("")
     try {
-      const response = await fetch("http://localhost:8080/auth/find-password/send", {
+      const response = await fetch(`/auth/find-password/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: parsePhoneNumber(verifyPhoneValue) }),
@@ -67,7 +65,7 @@ export default function FindPasswordPage() {
       const result = await response.json()
 
       if (!response.ok) {
-        setInlineError(result.error?.message || "인증 발송에 실패했습니다")
+        setInlineError(result.message || "인증 발송에 실패했습니다")
         return
       }
 
@@ -101,7 +99,6 @@ export default function FindPasswordPage() {
     setInlineError("")
 
     try {
-      // Just verify without reset - backend will confirm it's valid
       setVerifiedPhone(parsePhoneNumber(phone))
       setVerifiedCode(code)
       setStep("reset")
@@ -118,7 +115,7 @@ export default function FindPasswordPage() {
     setInlineError("")
 
     try {
-      const response = await fetch("http://localhost:8080/auth/find-password/reset", {
+      const response = await fetch(`/auth/find-password/reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -131,11 +128,10 @@ export default function FindPasswordPage() {
       const result = await response.json()
 
       if (!response.ok) {
-        setInlineError(result.error?.message || "비밀번호 변경에 실패했습니다")
+        setInlineError(result.message || "비밀번호 변경에 실패했습니다")
         return
       }
 
-      // Success toast and redirect
       router.push("/login?reset=success")
     } catch (error) {
       setInlineError("네트워크 오류가 발생했습니다")
@@ -152,212 +148,195 @@ export default function FindPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-8">
-      <div className="w-full max-w-md">
-        {/* Logo + Brand */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-violet-600 shadow-lg shadow-primary/30">
-              <span className="text-lg font-bold text-white">P</span>
-            </div>
-            <span className="text-2xl font-bold text-foreground">패스루트</span>
+    <div className="min-h-screen bg-muted/30 flex items-center justify-center p-4">
+      <div className="w-full max-w-4xl bg-white rounded-2xl shadow-lg overflow-hidden flex flex-col md:flex-row md:h-160">
+        <AuthBrandingPanel
+          subtitle={"비밀번호를\n재설정하세요"}
+          description="휴대폰 인증 후 새로운 비밀번호를 설정할 수 있습니다."
+        />
+
+        {/* Right Panel — Form */}
+        <div className="w-full md:w-7/12 p-8 md:p-12 flex flex-col justify-center overflow-y-auto scrollbar-hide">
+          <div className="md:hidden text-center mb-8">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">passroute</h1>
           </div>
-        </div>
 
-        {/* Form Card */}
-        <Card className="border-border/50 bg-card shadow-xl">
-          <CardContent className="pt-8">
-            {inlineError && (
-              <div className="rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 mb-4">
-                <p className="text-sm text-rose-400">{inlineError}</p>
-              </div>
-            )}
+          {inlineError && (
+            <div className="rounded-lg bg-rose-500/10 border border-rose-500/30 px-4 py-3 mb-4">
+              <p className="text-sm text-rose-500">{inlineError}</p>
+            </div>
+          )}
 
-            {step === "verify" && (
-              <div className="space-y-4">
-                <div>
-                  <h1 className="text-2xl font-bold text-foreground mb-1">비밀번호 재설정</h1>
-                  <p className="text-sm text-muted-foreground">휴대폰 번호를 인증하여 비밀번호를 변경하세요</p>
-                </div>
+          {step === "verify" && (
+            <>
+              <h1 className="text-2xl font-bold text-foreground mb-1">비밀번호 재설정</h1>
+              <p className="text-sm text-muted-foreground mb-8">휴대폰 번호를 인증하여 비밀번호를 변경하세요</p>
 
-                <form className="space-y-4">
-                  {/* Phone Input */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">휴대폰 번호</label>
-                    <div className="flex gap-2">
-                      <Input
-                        {...verifyForm.register("phone")}
-                        type="tel"
-                        placeholder="010-0000-0000"
-                        className="border-border/50 bg-secondary/30 flex-1"
-                        onChange={(e) => {
-                          const formatted = formatPhoneNumber(e.target.value)
-                          verifyForm.setValue("phone", formatted)
-                        }}
-                        disabled={codeSent || isLoading}
-                      />
-                      <Button
-                        type="button"
-                        onClick={handleSendCode}
-                        disabled={codeSent || isLoading}
-                        variant={codeSent ? "ghost" : "outline"}
-                        className="border-border/50"
-                      >
-                        {codeSent ? `재발송 (${formatCountdown(countdown)})` : "인증번호 발송"}
-                      </Button>
-                    </div>
-                    {verifyForm.formState.errors.phone && (
-                      <p className="text-xs text-rose-400">{verifyForm.formState.errors.phone.message}</p>
-                    )}
+              <form className="space-y-5">
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-foreground mb-1">휴대폰 번호</label>
+                  <div className="flex gap-2">
+                    <Input
+                      {...verifyForm.register("phone")}
+                      type="tel"
+                      placeholder="010-0000-0000"
+                      className="h-11 border-border bg-background flex-1"
+                      onChange={(e) => {
+                        const formatted = formatPhoneNumber(e.target.value)
+                        verifyForm.setValue("phone", formatted)
+                      }}
+                      disabled={codeSent || isLoading}
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleSendCode}
+                      disabled={codeSent || isLoading}
+                      variant={codeSent ? "ghost" : "outline"}
+                      className="h-11 border-border"
+                    >
+                      {codeSent ? `재발송 (${formatCountdown(countdown)})` : "인증번호 발송"}
+                    </Button>
                   </div>
-
-                  {/* Code Input */}
-                  {codeSent && (
-                    <>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground">인증번호</label>
-                        <Input
-                          {...verifyForm.register("code")}
-                          type="text"
-                          placeholder="인증번호 6자리"
-                          maxLength={6}
-                          className="border-border/50 bg-secondary/30"
-                          disabled={isLoading}
-                        />
-                        {verifyForm.formState.errors.code && (
-                          <p className="text-xs text-rose-400">{verifyForm.formState.errors.code.message}</p>
-                        )}
-                        {countdown < 30 && (
-                          <p className="text-xs text-rose-400">
-                            인증번호가 {formatCountdown(countdown)} 후 만료됩니다
-                          </p>
-                        )}
-                      </div>
-
-                      <Button
-                        type="button"
-                        onClick={handleVerifyCode}
-                        disabled={isLoading}
-                        className="w-full gap-2 bg-gradient-to-r from-primary to-violet-600 py-6 text-base font-semibold text-white shadow-lg shadow-primary/30 hover:opacity-90"
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            확인 중...
-                          </>
-                        ) : (
-                          <>인증 확인</>
-                        )}
-                      </Button>
-                    </>
+                  {verifyForm.formState.errors.phone && (
+                    <p className="text-xs text-rose-500">{verifyForm.formState.errors.phone.message}</p>
                   )}
-                </form>
-
-                {/* Back to Login */}
-                <Link href="/login" className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  <ChevronLeft className="h-4 w-4" />
-                  로그인으로 돌아가기
-                </Link>
-              </div>
-            )}
-
-            {step === "reset" && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <button
-                    onClick={() => setStep("verify")}
-                    className="p-1 hover:bg-secondary/30 rounded transition-colors"
-                  >
-                    <ChevronLeft className="h-5 w-5 text-muted-foreground" />
-                  </button>
-                  <h1 className="text-2xl font-bold text-foreground">새 비밀번호를 입력해 주세요</h1>
                 </div>
 
-                <form onSubmit={resetForm.handleSubmit(onResetSubmit)} className="space-y-4">
-                  {/* New Password */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">새 비밀번호</label>
-                    <div className="relative">
+                {codeSent && (
+                  <>
+                    <div className="space-y-3">
+                      <label className="text-sm font-medium text-foreground mb-1">인증번호</label>
                       <Input
-                        {...resetForm.register("newPassword")}
-                        type={showPassword ? "text" : "password"}
-                        placeholder="8~20자 영문/숫자/특수문자"
-                        className="border-border/50 bg-secondary/30 pr-10"
+                        {...verifyForm.register("code")}
+                        type="text"
+                        placeholder="인증번호 6자리"
+                        maxLength={6}
+                        className="h-11 border-border bg-background"
                         disabled={isLoading}
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
+                      {verifyForm.formState.errors.code && (
+                        <p className="text-xs text-rose-500">{verifyForm.formState.errors.code.message}</p>
+                      )}
+                      {countdown < 30 && (
+                        <p className="text-xs text-rose-500">
+                          인증번호가 {formatCountdown(countdown)} 후 만료됩니다
+                        </p>
+                      )}
                     </div>
-                    {passwordValue && (
-                      <div className="space-y-1">
-                        {passwordStrength.errors.map((error) => (
-                          <p key={error} className="text-xs text-rose-400">• {error}</p>
-                        ))}
-                        {passwordStrength.valid && (
-                          <p className="text-xs text-emerald-400 flex items-center gap-1">
-                            <Check className="h-3 w-3" />
-                            강력한 비밀번호입니다
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Confirm Password */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">새 비밀번호 확인</label>
-                    <div className="relative">
-                      <Input
-                        {...resetForm.register("confirmPassword")}
-                        type={showConfirmPassword ? "text" : "password"}
-                        placeholder="비밀번호를 한 번 더 입력하세요"
-                        className="border-border/50 bg-secondary/30 pr-10"
-                        disabled={isLoading}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
+                    <Button type="button" onClick={handleVerifyCode} disabled={isLoading} className="w-full h-11 text-sm font-semibold">
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          확인 중...
+                        </>
+                      ) : (
+                        "인증 확인"
+                      )}
+                    </Button>
+                  </>
+                )}
+              </form>
+
+              <Link href="/login" className="flex items-center justify-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mt-6">
+                <ChevronLeft className="h-4 w-4" />
+                로그인으로 돌아가기
+              </Link>
+            </>
+          )}
+
+          {step === "reset" && (
+            <>
+              <button
+                onClick={() => setStep("verify")}
+                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                이전 단계
+              </button>
+              <h1 className="text-2xl font-bold text-foreground mb-1">새 비밀번호 입력</h1>
+              <p className="text-sm text-muted-foreground mb-8">새로운 비밀번호를 설정해 주세요</p>
+
+              <form onSubmit={resetForm.handleSubmit(onResetSubmit)} className="space-y-5">
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-foreground mb-1">새 비밀번호</label>
+                  <div className="relative">
+                    <Input
+                      {...resetForm.register("newPassword")}
+                      type={showPassword ? "text" : "password"}
+                      placeholder="8~20자 영문/숫자/특수문자"
+                      className="h-11 border-border bg-background pr-10"
+                      disabled={isLoading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {passwordValue && (
+                    <div className="space-y-1">
+                      {passwordStrength.errors.map((error) => (
+                        <p key={error} className="text-xs text-rose-500">• {error}</p>
+                      ))}
+                      {passwordStrength.valid && (
+                        <p className="text-xs text-emerald-500 flex items-center gap-1">
+                          <Check className="h-3 w-3" />
+                          강력한 비밀번호입니다
+                        </p>
+                      )}
                     </div>
-                    {resetForm.formState.errors.confirmPassword && (
-                      <p className="text-xs text-rose-400">{resetForm.formState.errors.confirmPassword.message}</p>
-                    )}
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-foreground mb-1">새 비밀번호 확인</label>
+                  <div className="relative">
+                    <Input
+                      {...resetForm.register("confirmPassword")}
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="비밀번호를 한 번 더 입력하세요"
+                      className="h-11 border-border bg-background pr-10"
+                      disabled={isLoading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
+                  {resetForm.formState.errors.confirmPassword && (
+                    <p className="text-xs text-rose-500">{resetForm.formState.errors.confirmPassword.message}</p>
+                  )}
+                </div>
 
-                  {/* Submit Button */}
-                  <Button
-                    type="submit"
-                    disabled={isLoading || !passwordStrength.valid || !passwordsMatch}
-                    className="w-full gap-2 bg-gradient-to-r from-primary to-violet-600 py-6 text-base font-semibold text-white shadow-lg shadow-primary/30 hover:opacity-90 disabled:opacity-50"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        변경 중...
-                      </>
-                    ) : (
-                      <>비밀번호 변경</>
-                    )}
-                  </Button>
-                </form>
+                <Button
+                  type="submit"
+                  disabled={isLoading || !passwordStrength.valid || !passwordsMatch}
+                  className="w-full h-11 text-sm font-semibold disabled:opacity-50"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      변경 중...
+                    </>
+                  ) : (
+                    "비밀번호 변경"
+                  )}
+                </Button>
+              </form>
 
-                {/* Back to Login */}
-                <Link href="/login" className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  <ChevronLeft className="h-4 w-4" />
-                  로그인으로 돌아가기
-                </Link>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              <Link href="/login" className="flex items-center justify-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mt-6">
+                <ChevronLeft className="h-4 w-4" />
+                로그인으로 돌아가기
+              </Link>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

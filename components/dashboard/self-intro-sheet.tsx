@@ -129,7 +129,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto border-border/50 bg-card sm:max-w-xl">
+      <SheetContent className="w-full overflow-y-auto border-border bg-card sm:max-w-xl">
         <SheetHeader className="border-b border-border/30 pb-4">
           <SheetTitle className="text-lg font-semibold text-foreground">
             {editMode ? "자기소개서 수정" : "새 자기소개서 추가"}
@@ -155,7 +155,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                   value={data.company}
                   onValueChange={(value) => setData(prev => ({ ...prev, company: value }))}
                 >
-                  <SelectTrigger className="border-border/50 bg-secondary/30">
+                  <SelectTrigger className="border-border bg-secondary/30">
                     <SelectValue placeholder="기업을 선택하세요" />
                   </SelectTrigger>
                   <SelectContent>
@@ -169,7 +169,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                     placeholder="기업명을 입력하세요"
                     value={customCompany}
                     onChange={(e) => setCustomCompany(e.target.value)}
-                    className="mt-2 border-border/50 bg-secondary/30"
+                    className="mt-2 border-border bg-secondary/30"
                   />
                 )}
               </div>
@@ -181,7 +181,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                   value={data.role}
                   onValueChange={(value) => setData(prev => ({ ...prev, role: value }))}
                 >
-                  <SelectTrigger className="border-border/50 bg-secondary/30">
+                  <SelectTrigger className="border-border bg-secondary/30">
                     <SelectValue placeholder="직무를 선택하세요" />
                   </SelectTrigger>
                   <SelectContent>
@@ -195,7 +195,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                     placeholder="직무를 입력하세요"
                     value={customRole}
                     onChange={(e) => setCustomRole(e.target.value)}
-                    className="mt-2 border-border/50 bg-secondary/30"
+                    className="mt-2 border-border bg-secondary/30"
                   />
                 )}
               </div>
@@ -212,7 +212,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                         "flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all",
                         data.experience === level.id
                           ? "border-primary bg-primary/10 text-primary"
-                          : "border-border/50 text-muted-foreground hover:border-primary/30"
+                          : "border-border text-muted-foreground hover:border-primary/30"
                       )}
                     >
                       {level.label}
@@ -228,7 +228,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                       placeholder="경력 년수"
                       value={data.experienceYears || ""}
                       onChange={(e) => setData(prev => ({ ...prev, experienceYears: parseInt(e.target.value) }))}
-                      className="w-24 border-border/50 bg-secondary/30"
+                      className="w-24 border-border bg-secondary/30"
                     />
                     <span className="text-sm text-muted-foreground">년</span>
                   </div>
@@ -251,7 +251,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                   placeholder="채용 공고의 직무 기술서를 붙여넣으세요"
                   value={data.jdText}
                   onChange={(e) => setData(prev => ({ ...prev, jdText: e.target.value }))}
-                  className="min-h-[100px] border-border/50 bg-secondary/30"
+                  className="min-h-[100px] border-border bg-secondary/30"
                 />
               </div>
 
@@ -261,7 +261,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                   placeholder="https://..."
                   value={data.jobPostingUrl}
                   onChange={(e) => setData(prev => ({ ...prev, jobPostingUrl: e.target.value }))}
-                  className="border-border/50 bg-secondary/30"
+                  className="border-border bg-secondary/30"
                 />
               </div>
 
@@ -271,7 +271,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                   placeholder="추가 메모를 입력하세요"
                   value={data.notes}
                   onChange={(e) => setData(prev => ({ ...prev, notes: e.target.value }))}
-                  className="min-h-[60px] border-border/50 bg-secondary/30"
+                  className="min-h-[60px] border-border bg-secondary/30"
                 />
               </div>
             </div>
@@ -284,7 +284,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                 <FileText className="h-4 w-4 text-primary" />
                 <h3 className="font-semibold text-foreground">자기소개서 문항</h3>
               </div>
-              <Badge variant="outline" className="border-border/50 text-xs">
+              <Badge variant="outline" className="border-border text-xs">
                 {data.questions.length}개 문항
               </Badge>
             </div>
@@ -293,7 +293,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
               {data.questions.map((q, index) => (
                 <div
                   key={q.id}
-                  className="group relative rounded-xl border border-border/50 bg-secondary/20 p-4"
+                  className="group relative rounded-xl border border-border bg-secondary/20 p-4"
                 >
                   <div className="mb-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -317,14 +317,14 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                       placeholder="질문을 입력하세요"
                       value={q.question}
                       onChange={(e) => updateQuestion(q.id, "question", e.target.value)}
-                      className="border-border/50 bg-secondary/30 text-sm"
+                      className="border-border bg-secondary/30 text-sm"
                     />
                     <div className="relative">
                       <Textarea
                         placeholder="답변을 입력하세요"
                         value={q.answer}
                         onChange={(e) => updateQuestion(q.id, "answer", e.target.value)}
-                        className="min-h-[120px] border-border/50 bg-secondary/30 text-sm"
+                        className="min-h-[120px] border-border bg-secondary/30 text-sm"
                       />
                       <span className="absolute bottom-2 right-2 text-xs text-muted-foreground">
                         {q.answer.length}자
@@ -337,7 +337,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
               <Button
                 variant="outline"
                 onClick={addQuestion}
-                className="w-full gap-2 border-dashed border-border/50 text-muted-foreground hover:border-primary/50 hover:text-primary"
+                className="w-full gap-2 border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
               >
                 <Plus className="h-4 w-4" />
                 문항 추가
@@ -350,7 +350,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-primary" />
               <h3 className="font-semibold text-foreground">면접 일정 연결</h3>
-              <Badge variant="outline" className="border-border/50 text-[10px]">선택</Badge>
+              <Badge variant="outline" className="border-border text-[10px]">선택</Badge>
             </div>
 
             <div className="space-y-3">
@@ -361,7 +361,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                     type="date"
                     value={data.interviewDate}
                     onChange={(e) => setData(prev => ({ ...prev, interviewDate: e.target.value }))}
-                    className="border-border/50 bg-secondary/30"
+                    className="border-border bg-secondary/30"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -370,7 +370,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                     type="time"
                     value={data.interviewTime}
                     onChange={(e) => setData(prev => ({ ...prev, interviewTime: e.target.value }))}
-                    className="border-border/50 bg-secondary/30"
+                    className="border-border bg-secondary/30"
                   />
                 </div>
               </div>
@@ -381,7 +381,7 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                   value={data.interviewStage}
                   onValueChange={(value) => setData(prev => ({ ...prev, interviewStage: value }))}
                 >
-                  <SelectTrigger className="border-border/50 bg-secondary/30">
+                  <SelectTrigger className="border-border bg-secondary/30">
                     <SelectValue placeholder="면접 단계를 선택하세요" />
                   </SelectTrigger>
                   <SelectContent>
@@ -404,17 +404,17 @@ export function SelfIntroSheet({ open, onOpenChange, editMode = false, initialDa
                   <Trash2 className="h-4 w-4" />
                   삭제
                 </Button>
-                <Button onClick={handleSave} className="flex-1 gap-1.5 bg-gradient-to-r from-primary to-violet-600 text-white hover:opacity-90">
+                <Button onClick={handleSave} className="flex-1 gap-1.5 bg-primary text-white hover:opacity-90">
                   <Save className="h-4 w-4" />
                   저장
                 </Button>
               </>
             ) : (
               <>
-                <Button variant="outline" className="flex-1 border-border/50">
+                <Button variant="outline" className="flex-1 border-border">
                   임시 저장
                 </Button>
-                <Button onClick={handleSave} className="flex-1 gap-1.5 bg-gradient-to-r from-primary to-violet-600 text-white hover:opacity-90">
+                <Button onClick={handleSave} className="flex-1 gap-1.5 bg-primary text-white hover:opacity-90">
                   <Save className="h-4 w-4" />
                   저장 완료
                 </Button>

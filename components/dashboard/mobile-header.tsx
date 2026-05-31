@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -14,72 +14,25 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import {
-  LayoutDashboard,
-  Calendar,
-  FolderOpen,
-  FileText,
-  Briefcase,
-  History,
-  FileBarChart,
-  Settings,
-  Sparkles,
-  Menu,
-  ChevronDown,
-} from "lucide-react"
-
-const menuItems = [
-  {
-    label: "대시보드",
-    href: "/",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "면접 일정 관리",
-    href: "/schedule",
-    icon: Calendar,
-  },
-  {
-    label: "자료 관리",
-    href: null,
-    icon: FolderOpen,
-    expandable: true,
-    children: [
-      { label: "자기소개서", href: "/self-intro", icon: FileText },
-      { label: "이력서", href: "/documents/resume", icon: FileText },
-      { label: "포트폴리오", href: "/documents/portfolio", icon: Briefcase },
-    ],
-  },
-  {
-    label: "면접 이력",
-    href: "/history",
-    icon: History,
-  },
-  {
-    label: "리포트",
-    href: "/reports",
-    icon: FileBarChart,
-  },
-  {
-    label: "설정",
-    href: "/settings",
-    icon: Settings,
-  },
-]
-
-const user = {
-  name: "김지민",
-  email: "jimin.kim@email.com",
-  avatar: null,
-}
+import { Menu, ChevronDown } from "lucide-react"
+import { menuItems } from "@/lib/navigation-config"
+import { getUserProfile, type UserProfile } from "@/lib/api/user"
 
 export function MobileHeader() {
   const pathname = usePathname()
   const [expandedItems, setExpandedItems] = useState<string[]>(["자료 관리"])
+  const [user, setUser] = useState<UserProfile | null>(null)
+
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null
+    if (token) {
+      getUserProfile().then(setUser).catch(() => {})
+    }
+  }, [])
 
   const toggleExpand = (label: string) => {
-    setExpandedItems(prev => 
-      prev.includes(label) 
+    setExpandedItems(prev =>
+      prev.includes(label)
         ? prev.filter(item => item !== label)
         : [...prev, label]
     )
@@ -98,11 +51,8 @@ export function MobileHeader() {
   return (
     <header className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-between border-b border-border/50 bg-card/95 px-4 backdrop-blur-sm lg:hidden">
       {/* Logo */}
-      <div className="flex items-center gap-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-600">
-          <Sparkles className="h-4 w-4 text-white" />
-        </div>
-        <span className="text-base font-semibold tracking-tight text-foreground">InterviewAI</span>
+      <div className="flex items-center">
+        <span className="text-xl font-bold text-foreground">passroute</span>
       </div>
 
       {/* Mobile Menu */}
@@ -115,14 +65,11 @@ export function MobileHeader() {
         </SheetTrigger>
         <SheetContent side="left" className="w-72 border-border/50 bg-card p-0">
           <SheetHeader className="border-b border-border/50 px-4 py-4">
-            <SheetTitle className="flex items-center gap-2.5 text-left">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-600">
-                <Sparkles className="h-4.5 w-4.5 text-white" />
-              </div>
-              <span className="text-lg font-semibold text-foreground">InterviewAI</span>
+            <SheetTitle className="text-left">
+              <span className="text-lg font-bold text-foreground">passroute</span>
             </SheetTitle>
             <SheetDescription className="sr-only">
-              AI 면접 분석 플랫폼 메뉴
+              메뉴
             </SheetDescription>
           </SheetHeader>
 
@@ -179,7 +126,7 @@ export function MobileHeader() {
               return (
                 <Link
                   key={item.href || item.label}
-                  href={item.href || "/"}
+                  href={item.href || "/dashboard"}
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                     itemActive
@@ -197,17 +144,17 @@ export function MobileHeader() {
           <div className="absolute bottom-0 left-0 right-0 border-t border-border/50 p-4">
             <div className="flex items-center gap-3 rounded-lg px-2 py-2">
               <Avatar className="h-9 w-9 ring-2 ring-border/50">
-                <AvatarImage src={user.avatar || undefined} alt={user.name} />
-                <AvatarFallback className="bg-gradient-to-br from-primary/20 to-violet-600/20 text-xs font-medium text-foreground">
-                  {user.name.slice(0, 2)}
+                <AvatarImage src={undefined} alt={user?.name} />
+                <AvatarFallback className="bg-primary/20 text-xs font-medium text-foreground">
+                  {user?.name?.slice(0, 2) ?? "—"}
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-col overflow-hidden">
                 <span className="truncate text-sm font-medium text-foreground">
-                  {user.name}
+                  {user?.name ?? "—"}
                 </span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {user.email}
+                  {user?.email ?? ""}
                 </span>
               </div>
             </div>
