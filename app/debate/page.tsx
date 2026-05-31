@@ -144,6 +144,14 @@ export default function DebatePage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [debateState?.latestTurns])
 
+  // 세션 변경 및 언마운트 시 오디오 정지 + 재생 기록 초기화
+  useEffect(() => {
+    playedTurnIds.current.clear()
+    return () => {
+      audioRef.current?.pause()
+    }
+  }, [sessionId])
+
   // TTS 자동 재생 — audioUrl 있는 새 AI 턴만
   useEffect(() => {
     if (!debateState?.latestTurns) return
@@ -543,7 +551,7 @@ export default function DebatePage() {
                     ? "나"
                     : isInterviewer
                       ? "면접관"
-                      : selectedPersona?.name
+                      : (selectedPersona?.name ?? "상대방")
                   return (
                     <div
                       key={turn.id}
