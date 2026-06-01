@@ -63,12 +63,16 @@ export function useDebateSTT({ sessionId, round, stream, active }: UseDebateSTTP
 
     let cancelled = false
     const aiServerUrl = process.env.NEXT_PUBLIC_AI_WS_URL
+    if (!aiServerUrl) return
 
     async function start() {
       try {
-        const audioCtx = new AudioContext({ sampleRate: 48000 })
+        const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        if (!AudioContextClass) return
+        const audioCtx = new AudioContextClass({ sampleRate: 48000 })
         audioCtxRef.current = audioCtx
 
+        if (!audioCtx.audioWorklet) { audioCtx.close(); return }
         await audioCtx.audioWorklet.addModule("/audio-worklet-processor.js")
 
         if (cancelled) { audioCtx.close(); return }
@@ -136,13 +140,22 @@ export function useDebateSTT({ sessionId, round, stream, active }: UseDebateSTTP
     }
   }, [active, sessionId, round, stream, cleanup])
 
-  // 라운드 변경 시 초기화
+  // 라운드 변경 또는 녹음 시작 시 초기화
   useEffect(() => {
     setTranscript("")
     setWpm(0)
     setFillerCount(0)
     setFeedback(null)
   }, [round])
+
+  useEffect(() => {
+    if (active) {
+      setTranscript("")
+      setWpm(0)
+      setFillerCount(0)
+      setFeedback(null)
+    }
+  }, [active])
 
   return { transcript, wpm, fillerCount, audioLevel, feedback }
 }

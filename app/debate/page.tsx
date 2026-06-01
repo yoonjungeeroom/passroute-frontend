@@ -227,12 +227,18 @@ export default function DebatePage() {
   // 마이크 스트림 — 토론 진행 중에만 획득
   useEffect(() => {
     if (phase !== "debating") return
-    let stream: MediaStream | null = null
+    let isCurrent = true
+    let activeStream: MediaStream | null = null
     navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(s => { stream = s; setMicStream(s) })
+      .then(s => {
+        if (!isCurrent) { s.getTracks().forEach(t => t.stop()); return }
+        activeStream = s
+        setMicStream(s)
+      })
       .catch(() => {})
     return () => {
-      stream?.getTracks().forEach(t => t.stop())
+      isCurrent = false
+      activeStream?.getTracks().forEach(t => t.stop())
       setMicStream(null)
     }
   }, [phase])
