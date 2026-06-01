@@ -7,7 +7,6 @@ import { MobileHeader } from "@/components/dashboard/mobile-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -24,6 +23,8 @@ import {
   Target,
   Swords,
   Trophy,
+  Mic,
+  MicOff,
 } from "lucide-react"
 import {
   getDebateTopics,
@@ -38,6 +39,14 @@ import {
   type DebateStateResponse,
   type DebateRound,
 } from "@/lib/api/debate"
+import { useDebateSTT } from "@/hooks/use-debate-stt"
+
+const STATE_TO_ROUND: Record<string, DebateRound> = {
+  OPENING_USER: "OPENING",
+  REBUTTAL_1_USER: "REBUTTAL_1",
+  REBUTTAL_2_USER: "REBUTTAL_2",
+  CLOSING_USER: "CLOSING",
+}
 
 const roundLabel: Record<DebateRound, string> = {
   OPENING: "개회",
@@ -69,13 +78,22 @@ export default function DebatePage() {
   // Debate state
   const [sessionId, setSessionId] = useState<number | null>(null)
   const [debateState, setDebateState] = useState<DebateStateResponse | null>(null)
-  const [userInput, setUserInput] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [polling, setPolling] = useState(false)
   const [pollTrigger, setPollTrigger] = useState(0)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const playedTurnIds = useRef<Set<number>>(new Set())
+
+  // STT
+  const [micStream, setMicStream] = useState<MediaStream | null>(null)
+  const [recording, setRecording] = useState(false)
+  const [sttReady, setSttReady] = useState(false)
+  const currentRound = debateState?.currentState
+    ? (STATE_TO_ROUND[debateState.currentState] ?? null)
+    : null
+  const { transcript: sttTranscript, audioLevel: sttAudioLevel, feedback: sttFeedback } =
+    useDebateSTT({ sessionId, round: currentRound, stream: micStream, active: recording })
 
   // Load topics and personas
   useEffect(() => {
@@ -206,15 +224,44 @@ export default function DebatePage() {
     }
   }
 
+  // 마이크 스트림 — 토론 진행 중에만 획득
+  useEffect(() => {
+    if (phase !== "debating") return
+    let stream: MediaStream | null = null
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(s => { stream = s; setMicStream(s) })
+      .catch(() => {})
+    return () => {
+      stream?.getTracks().forEach(t => t.stop())
+      setMicStream(null)
+    }
+  }, [phase])
+
+  // 사용자 턴 변경 시 녹음 상태 초기화
+  useEffect(() => {
+    if (!debateState?.waitingForUser) {
+      setRecording(false)
+      setSttReady(false)
+    }
+  }, [debateState?.waitingForUser])
+
+  // 녹음 완료 후 1.5초 대기 → sttReady (DB write 여유 시간)
+  useEffect(() => {
+    if (recording || !sttTranscript) return
+    const timer = setTimeout(() => setSttReady(true), 1500)
+    return () => clearTimeout(timer)
+  }, [recording, sttTranscript])
+
   const handleSubmitTurn = async () => {
-    if (!sessionId || !userInput.trim() || submitting) return
+    if (!sessionId || submitting || !sttReady) return
     setSubmitting(true)
     try {
-      await submitDebateTurn(sessionId, userInput.trim())
-      setUserInput("")
+      await submitDebateTurn(sessionId)
+      setSttReady(false)
+      setRecording(false)
       setPollTrigger(prev => prev + 1)
     } catch {
-      // keep input on error
+      // keep state on error
     } finally {
       setSubmitting(false)
     }
@@ -227,13 +274,6 @@ export default function DebatePage() {
       router.push(`/reports?type=debate`)
     } catch {
       router.push(`/reports?type=debate`)
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault()
-      handleSubmitTurn()
     }
   }
 
@@ -605,27 +645,77 @@ export default function DebatePage() {
 
               {/* Input Area */}
               {phase === "debating" && debateState?.waitingForUser && (
-                <div className="mt-4 flex gap-2">
-                  <Textarea
-                    value={userInput}
-                    onChange={(e) => setUserInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="의견을 입력하세요..."
-                    className="min-h-12 max-h-32 resize-none border-border/50 bg-secondary/30"
-                    disabled={submitting}
-                  />
-                  <Button
-                    size="icon"
-                    onClick={handleSubmitTurn}
-                    disabled={!userInput.trim() || submitting}
-                    className="h-12 w-12 shrink-0"
-                  >
-                    {submitting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
+                <div className="mt-4 space-y-2">
+                  {/* 실시간 트랜스크립트 */}
+                  {sttTranscript && (
+                    <div className="rounded-lg border border-border/50 bg-secondary/30 px-4 py-3 text-sm text-foreground min-h-12">
+                      {sttTranscript}
+                    </div>
+                  )}
+                  {/* 피드백 */}
+                  {sttFeedback && (
+                    <p className="text-xs text-amber-500 px-1">{sttFeedback}</p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    {/* 녹음 토글 버튼 */}
+                    <Button
+                      variant={recording ? "destructive" : "outline"}
+                      onClick={() => {
+                        if (recording) {
+                          setRecording(false)
+                        } else {
+                          setSttReady(false)
+                          setRecording(true)
+                        }
+                      }}
+                      disabled={submitting || sttReady}
+                      className="gap-2"
+                    >
+                      {recording ? (
+                        <>
+                          <MicOff className="h-4 w-4" />
+                          녹음 완료
+                        </>
+                      ) : (
+                        <>
+                          <Mic className="h-4 w-4" />
+                          {sttTranscript ? "다시 녹음" : "녹음 시작"}
+                        </>
+                      )}
+                    </Button>
+                    {/* 오디오 레벨 인디케이터 */}
+                    {recording && (
+                      <div className="flex items-end gap-0.5 h-6">
+                        {[0.4, 0.6, 1, 0.6, 0.4].map((scale, i) => (
+                          <div
+                            key={i}
+                            className="w-1 rounded-full bg-primary transition-all duration-75"
+                            style={{ height: `${Math.max(4, sttAudioLevel * scale * 0.24)}px` }}
+                          />
+                        ))}
+                      </div>
                     )}
-                  </Button>
+                    {/* 처리 중 표시 */}
+                    {!recording && sttTranscript && !sttReady && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        처리 중...
+                      </div>
+                    )}
+                    {/* 제출 버튼 */}
+                    <Button
+                      size="icon"
+                      onClick={handleSubmitTurn}
+                      disabled={!sttReady || submitting}
+                      className="h-10 w-10 shrink-0 ml-auto"
+                    >
+                      {submitting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               )}
 
