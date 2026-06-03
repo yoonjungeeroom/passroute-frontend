@@ -13,6 +13,7 @@ interface UseFaceAnalysisReturn {
   gazeRatio: number
   gazeOn: boolean
   blinkCount: number
+  gazeOffCount: number
   ear: number
   faceDetected: boolean
   feedback: string | null
@@ -22,6 +23,7 @@ export function useFaceAnalysis({ sessionId, questionId, videoRef, active }: Use
   const [gazeRatio, setGazeRatio] = useState(0)
   const [gazeOn, setGazeOn] = useState(false)
   const [blinkCount, setBlinkCount] = useState(0)
+  const [gazeOffCount, setGazeOffCount] = useState(0)
   const [ear, setEar] = useState(0)
   const [faceDetected, setFaceDetected] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -30,6 +32,7 @@ export function useFaceAnalysis({ sessionId, questionId, videoRef, active }: Use
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const prevGazeOnRef = useRef(true)
 
   const cleanup = useCallback(() => {
     clearInterval(intervalRef.current)
@@ -74,7 +77,14 @@ export function useFaceAnalysis({ sessionId, questionId, videoRef, active }: Use
         if (data.status === "face_data") {
           setFaceDetected(data.face_detected ?? false)
           if (data.gaze_ratio !== undefined) setGazeRatio(data.gaze_ratio)
-          if (data.gaze_on !== undefined) setGazeOn(data.gaze_on)
+          if (data.gaze_on !== undefined) {
+            const currentGazeOn = data.gaze_on as boolean
+            if (prevGazeOnRef.current && !currentGazeOn) {
+              setGazeOffCount(prev => prev + 1)
+            }
+            prevGazeOnRef.current = currentGazeOn
+            setGazeOn(currentGazeOn)
+          }
           if (data.blink_in_window !== undefined) setBlinkCount(data.blink_in_window)
           if (data.ear !== undefined) setEar(data.ear)
         } else if (data.status === "feedback") {
@@ -97,10 +107,12 @@ export function useFaceAnalysis({ sessionId, questionId, videoRef, active }: Use
     setGazeRatio(0)
     setGazeOn(false)
     setBlinkCount(0)
+    setGazeOffCount(0)
     setEar(0)
     setFaceDetected(false)
     setFeedback(null)
+    prevGazeOnRef.current = true
   }, [questionId])
 
-  return { gazeRatio, gazeOn, blinkCount, ear, faceDetected, feedback }
+  return { gazeRatio, gazeOn, blinkCount, gazeOffCount, ear, faceDetected, feedback }
 }

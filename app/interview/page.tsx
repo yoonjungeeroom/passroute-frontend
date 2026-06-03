@@ -321,7 +321,6 @@ function LiveInterviewScreen({
   const [isPaused, setIsPaused] = useState(false)
   const [reAnswerCount, setReAnswerCount] = useState(0)
   const [followUpQuestion, setFollowUpQuestion] = useState<{ id: number; text: string } | null>(null)
-  const [verbalScores, setVerbalScores] = useState({ structure: 0, logic: 0, specificity: 0, jobFit: 0 })
 
   const currentQuestion = followUpQuestion
     ? { questionId: followUpQuestion.id, questionText: followUpQuestion.text, questionOrder: -1 }
@@ -330,7 +329,7 @@ function LiveInterviewScreen({
   const questionTimeLimit = 210 // 3:30
 
   // STT hook
-  const { transcript, wpm, fillerCount, audioLevel, feedback: sttFeedback } = useSTT({
+  const { transcript, wpm, fillerCount, totalFillerCount, silenceSec, audioLevel, feedback: sttFeedback } = useSTT({
     sessionId,
     questionId: currentQuestion?.questionId ?? 0,
     stream,
@@ -342,7 +341,7 @@ function LiveInterviewScreen({
   }, [transcript])
 
   // Face analysis hook - always active during interview
-  const { gazeRatio, blinkCount, ear, faceDetected, feedback: faceFeedback } = useFaceAnalysis({
+  const { gazeRatio, blinkCount, gazeOffCount, ear, faceDetected, feedback: faceFeedback } = useFaceAnalysis({
     sessionId,
     questionId: currentQuestion?.questionId ?? 0,
     videoRef: userVideoRef,
@@ -383,14 +382,6 @@ function LiveInterviewScreen({
         answerText: lastTranscriptRef.current || transcript,
         voiceData: wpm > 0 ? { filler_word_count: fillerCount, wpm } : undefined,
       })
-      if (result.evaluation) {
-        setVerbalScores({
-          structure: result.evaluation.structure ?? 0,
-          logic: result.evaluation.logic ?? 0,
-          specificity: result.evaluation.specificity ?? 0,
-          jobFit: result.evaluation.jobFit ?? 0,
-        })
-      }
       if (result.hasFollowUp && result.followUpQuestionId && result.followUpQuestionText) {
         setFollowUpQuestion({ id: result.followUpQuestionId, text: result.followUpQuestionText })
       } else {
@@ -429,21 +420,6 @@ function LiveInterviewScreen({
     handleNextQuestion()
   }
 
-  // ear(Eye Aspect Ratio) 0.2~0.4 범위를 0~100으로 매핑 → 표정 자연스러움 근사
-  const expressionScore = faceDetected ? Math.min(100, Math.round(Math.max(0, (ear - 0.15) / 0.25) * 100)) : 0
-  const visionMetrics = [
-    { label: "시선 안정성", value: Math.round(gazeRatio) },
-    { label: "표정 자연스러움", value: expressionScore },
-    { label: "자세 안정성", value: faceDetected ? Math.round(gazeRatio * 0.9) : 0 },
-    { label: "깜빡임 횟수", value: blinkCount },
-  ]
-
-  const verbalMetrics = [
-    { label: "답변 구조", value: verbalScores.structure },
-    { label: "논리적 흐름", value: verbalScores.logic },
-    { label: "구체성", value: verbalScores.specificity },
-    { label: "직무 적합도", value: verbalScores.jobFit },
-  ]
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -473,38 +449,59 @@ function LiveInterviewScreen({
 
       {/* Main Grid */}
       <main className="flex flex-1 gap-3 overflow-hidden p-3">
-        {/* Left Column: Vision Analysis */}
+        {/* Left Column: 통합 분석 패널 */}
         {mode === "practice" && (
           <div className="hidden w-56 shrink-0 flex-col gap-3 xl:flex">
-            <AnalysisPanel title="Vision Analysis">
-              <div className="mb-4 flex justify-center">
+            <AnalysisPanel title="실시간 분석">
+              <div className="mb-3 flex justify-center">
                 <div className="relative h-20 w-20 overflow-hidden rounded-lg border border-border bg-background">
                   {stream ? (
-                    <video
-                      autoPlay
-                      playsInline
-                      muted
-                      className="h-full w-full object-cover"
-                      ref={(el) => { if (el && stream) el.srcObject = stream }}
-                    />
+                    <video autoPlay playsInline muted className="h-full w-full object-cover"
+                      ref={(el) => { if (el && stream) el.srcObject = stream }} />
                   ) : (
                     <User className="absolute inset-0 m-auto h-10 w-10 text-muted-foreground/30" />
                   )}
                   <div className="absolute inset-1 rounded-md border border-dashed border-primary/30" />
                 </div>
               </div>
-              <div className="space-y-3">
-                {visionMetrics.map((m) => (
-                  <div key={m.label}>
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{m.label}</span>
-                      <span className="text-xs font-semibold text-foreground">{m.value}</span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${m.value}%` }} />
-                    </div>
+
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">음성</div>
+              <div className="mb-3 grid grid-cols-3 gap-1.5">
+                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                  <div className="text-sm font-bold text-foreground">{wpm > 0 ? Math.round(wpm) : "--"}</div>
+                  <div className="text-[9px] text-muted-foreground">WPM</div>
+                </div>
+                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                  <div className="text-sm font-bold text-foreground">{silenceSec > 0 ? silenceSec.toFixed(1) : "--"}</div>
+                  <div className="text-[9px] text-muted-foreground">침묵(초)</div>
+                </div>
+                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                  <div className="text-sm font-bold text-foreground">{totalFillerCount > 0 ? totalFillerCount : "--"}</div>
+                  <div className="text-[9px] text-muted-foreground">필러워드</div>
+                </div>
+              </div>
+
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">영상</div>
+              <div className="space-y-2">
+                <div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">시선 고정률</span>
+                    <span className="text-xs font-semibold text-foreground">{Math.round(gazeRatio)}%</span>
                   </div>
-                ))}
+                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${gazeRatio}%` }} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                    <div className="text-sm font-bold text-foreground">{gazeOffCount}</div>
+                    <div className="text-[9px] text-muted-foreground">시선이탈</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                    <div className="text-sm font-bold text-foreground">{blinkCount}</div>
+                    <div className="text-[9px] text-muted-foreground">깜빡임</div>
+                  </div>
+                </div>
               </div>
             </AnalysisPanel>
           </div>
@@ -646,46 +643,6 @@ function LiveInterviewScreen({
           </div>
         </div>
 
-        {/* Right Column: Verbal + Voice Analysis */}
-        {mode === "practice" && (
-          <div className="hidden w-56 shrink-0 flex-col gap-3 xl:flex">
-            <AnalysisPanel title="Verbal Analysis">
-              <div className="space-y-3">
-                {verbalMetrics.map((m) => (
-                  <div key={m.label}>
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{m.label}</span>
-                      <span className="text-xs font-semibold text-foreground">{m.value}</span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${m.value}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </AnalysisPanel>
-            <AnalysisPanel title="Voice Analysis">
-              <div className="space-y-3">
-                <div className="flex h-10 items-end gap-0.5">
-                  {Array.from({ length: 24 }).map((_, i) => (
-                    <div key={i} className="w-1 rounded-full bg-primary transition-all duration-150"
-                      style={{ height: `${answerState === "answering" ? (Math.sin((i / 24) * Math.PI) * 60 + 20 + Math.random() * 20) : 15}%`, opacity: answerState === "answering" ? 0.6 : 0.15 }} />
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-border bg-background p-2 text-center">
-                    <div className="text-lg font-bold text-foreground">{wpm > 0 ? Math.round(wpm) : "--"}</div>
-                    <div className="text-[10px] text-muted-foreground">WPM</div>
-                  </div>
-                  <div className="rounded-lg border border-border bg-background p-2 text-center">
-                    <div className="text-lg font-bold text-foreground">{fillerCount > 0 ? fillerCount : "--"}</div>
-                    <div className="text-[10px] text-muted-foreground">필러워드</div>
-                  </div>
-                </div>
-              </div>
-            </AnalysisPanel>
-          </div>
-        )}
       </main>
     </div>
   )

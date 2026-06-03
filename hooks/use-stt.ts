@@ -13,6 +13,8 @@ interface UseSTTReturn {
   transcript: string
   wpm: number
   fillerCount: number
+  totalFillerCount: number
+  silenceSec: number
   audioLevel: number
   feedback: string | null
 }
@@ -21,6 +23,8 @@ export function useSTT({ sessionId, questionId, stream, active }: UseSTTParams):
   const [transcript, setTranscript] = useState("")
   const [wpm, setWpm] = useState(0)
   const [fillerCount, setFillerCount] = useState(0)
+  const [totalFillerCount, setTotalFillerCount] = useState(0)
+  const [silenceSec, setSilenceSec] = useState(0)
   const [audioLevel, setAudioLevel] = useState(0)
   const [feedback, setFeedback] = useState<string | null>(null)
 
@@ -76,7 +80,6 @@ export function useSTT({ sessionId, questionId, stream, active }: UseSTTParams):
         })
         workletNodeRef.current = workletNode
 
-        // Analyser for audio level metering
         const analyser = audioCtx.createAnalyser()
         analyser.fftSize = 256
         analyserRef.current = analyser
@@ -85,7 +88,6 @@ export function useSTT({ sessionId, questionId, stream, active }: UseSTTParams):
         source.connect(workletNode)
         workletNode.connect(audioCtx.destination)
 
-        // Audio level metering loop
         const freqData = new Uint8Array(analyser.frequencyBinCount)
         const updateLevel = () => {
           if (cancelled) return
@@ -96,12 +98,10 @@ export function useSTT({ sessionId, questionId, stream, active }: UseSTTParams):
         }
         updateLevel()
 
-        // WebSocket connection
         const ws = new WebSocket(`${aiServerUrl}/ws/stt/${sessionId}/${questionId}`)
         wsRef.current = ws
 
         ws.onopen = () => {
-          // Start sending PCM data
           workletNode.port.onmessage = (e: MessageEvent) => {
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(e.data as ArrayBuffer)
@@ -115,7 +115,13 @@ export function useSTT({ sessionId, questionId, stream, active }: UseSTTParams):
             if (data.status === "completed") {
               setTranscript(data.text || "")
               if (data.wpm) setWpm(data.wpm)
-              if (data.filler_count !== undefined) setFillerCount(data.filler_count)
+              if (data.filler_count !== undefined) {
+                setFillerCount(data.filler_count)
+                setTotalFillerCount(prev => prev + (data.filler_count || 0))
+              }
+              setSilenceSec(0)
+            } else if (data.status === "silence") {
+              if (data.silence_sec !== undefined) setSilenceSec(data.silence_sec)
             } else if (data.status === "feedback") {
               setFeedback(data.message || null)
               clearTimeout(feedbackTimerRef.current)
@@ -137,13 +143,14 @@ export function useSTT({ sessionId, questionId, stream, active }: UseSTTParams):
     }
   }, [active, sessionId, questionId, stream, cleanup])
 
-  // Reset transcript when question changes
   useEffect(() => {
     setTranscript("")
     setWpm(0)
     setFillerCount(0)
+    setTotalFillerCount(0)
+    setSilenceSec(0)
     setFeedback(null)
   }, [questionId])
 
-  return { transcript, wpm, fillerCount, audioLevel, feedback }
+  return { transcript, wpm, fillerCount, totalFillerCount, silenceSec, audioLevel, feedback }
 }
