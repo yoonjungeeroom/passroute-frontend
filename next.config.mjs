@@ -28,7 +28,7 @@ const nextConfig = {
         { source: "/interview/:path*", destination: `${backend}/api/interview/:path*` },
         { source: "/self-intro/:path*", destination: `${backend}/api/self-intro/:path*` },
         { source: "/debate/:path*", destination: `${backend}/api/debate/:path*` },
-        { source: "/reports/:path*", destination: `${backend}/api/reports/:path*` },
+        { source: "/reports/:path*", destination: `${backend}/api/reports/:path*`, has: [{ type: "header", key: "authorization" }] },
       ],
     }
   },

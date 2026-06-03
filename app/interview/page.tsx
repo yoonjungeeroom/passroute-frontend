@@ -917,7 +917,7 @@ function InterviewPageInner() {
 
   const handleInterviewEnd = () => {
     if (sessionIdParam) {
-      router.push(`/reports?session=${sessionIdParam}`)
+      router.push(`/reports/interview/${sessionIdParam}`)
     } else {
       router.push("/reports")
     }
