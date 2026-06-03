@@ -11,6 +11,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faBrain, faChartLine, faStar, faArrowTrendUp, faLightbulb } from "@fortawesome/free-solid-svg-icons"
 import { cn } from "@/lib/utils"
 import { getReportList, getInterviewReport, getDebateReport, type ReportListItem } from "@/lib/api/reports"
+import { DebateReportView } from "@/components/reports/DebateReportView"
 import { getWorstClip } from "@/lib/api/interview"
 import type { InterviewReportResponse, DebateReportResponse } from "@/types/report"
 
@@ -283,71 +284,7 @@ export default function ReportsPage() {
                           </div>
                         </div>
                       ) : expandedDebateReport ? (
-                        <div className="space-y-6">
-                          {/* Overall */}
-                          <div className="rounded-xl bg-gradient-to-br from-primary/5 to-accent/5 p-4">
-                            <h4 className="mb-2 text-sm font-semibold text-foreground flex items-center gap-2">
-                              <FontAwesomeIcon icon={faLightbulb} className="h-3.5 w-3.5 text-amber-500" />
-                              종합 평가
-                            </h4>
-                            <p className="text-sm leading-relaxed text-muted-foreground">{expandedDebateReport.overall}</p>
-                          </div>
-
-                          {/* Turn Feedback */}
-                          {expandedDebateReport.turnFeedback.length > 0 && (
-                            <div className="space-y-3">
-                              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                                <FontAwesomeIcon icon={faChartLine} className="h-3.5 w-3.5 text-primary" />
-                                라운드별 피드백
-                              </h4>
-                              {expandedDebateReport.turnFeedback.map((tf, i) => (
-                                <div key={i} className="rounded-lg border border-border/50 p-3">
-                                  <div className="flex items-center justify-between mb-1.5">
-                                    <Badge variant="outline" className="text-xs">{tf.roundType}</Badge>
-                                    <span className="text-xs font-bold text-foreground">{tf.weightedScore}점</span>
-                                  </div>
-                                  <p className="text-xs text-muted-foreground">{tf.feedback}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Strategy Analysis */}
-                          {expandedDebateReport.strategyAnalysis && (
-                            <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-blue-600 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faBrain} className="h-3.5 w-3.5" />
-                                전략 분석
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{expandedDebateReport.strategyAnalysis}</p>
-                            </div>
-                          )}
-
-                          {/* Strengths & Improvements */}
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-emerald-600 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
-                                강점
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{expandedDebateReport.strengths}</p>
-                            </div>
-                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-amber-600 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faArrowTrendUp} className="h-3.5 w-3.5" />
-                                개선점
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{expandedDebateReport.improvements}</p>
-                            </div>
-                          </div>
-
-                          {/* Final Advice */}
-                          {expandedDebateReport.finalAdvice && (
-                            <div className="rounded-xl bg-muted/30 p-4">
-                              <p className="text-sm text-muted-foreground">{expandedDebateReport.finalAdvice}</p>
-                            </div>
-                          )}
-                        </div>
+                        <DebateReportView report={expandedDebateReport} />
                       ) : expandedReport ? (
                         <div className="space-y-6">
                           {/* Overall & Scores */}

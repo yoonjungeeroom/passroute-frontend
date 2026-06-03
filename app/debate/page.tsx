@@ -383,10 +383,10 @@ export default function DebatePage() {
     if (!sessionId) return
     try {
       await endDebateSession(sessionId)
-      router.push(`/reports?type=debate`)
     } catch {
-      router.push(`/reports?type=debate`)
+      // end 실패해도 리포트는 생성됐을 수 있음
     }
+    router.push(`/reports/debate/${sessionId}`)
   }
 
   const difficultyLabel: Record<string, string> = {
