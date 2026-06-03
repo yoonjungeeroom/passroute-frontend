@@ -35,11 +35,18 @@ import {
   Swords,
   FileText,
   FolderOpen,
+  Target,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { setupInterview, startInterview } from "@/lib/api/interview"
 import { getSelfIntroList, type SelfIntroResponse } from "@/lib/api/self-intro"
 import { getDocumentList, type DocumentItem } from "@/lib/api/documents"
+import {
+  getDebateTopics,
+  getDebatePersonas,
+  type DebateTopic,
+  type DebatePersona,
+} from "@/lib/api/debate"
 
 interface InterviewModalProps {
   open: boolean
@@ -59,6 +66,13 @@ const careerLabels: Record<string, string> = {
   INTERN: "인턴",
   JUNIOR: "신입",
   SENIOR: "경력",
+}
+
+const categoryLabel: Record<string, string> = {
+  AI_ETHICS: "AI 윤리",
+  RECRUITMENT: "채용",
+  DEV_CULTURE: "개발 문화",
+  TECH_TREND: "기술 트렌드",
 }
 
 const interviewStages = [
@@ -154,10 +168,12 @@ const personas: {
 export function InterviewModal({ open, onOpenChange, prefillData }: InterviewModalProps) {
   const router = useRouter()
   const [step, setStep] = useState(1)
-  const [selectedIntro, setSelectedIntro] = useState<number | null>(null)
-  const [selectedStage, setSelectedStage] = useState<string | null>(null)
+  // Shared
   const [selectedMode, setSelectedMode] = useState<string | null>(null)
   const [selectedPracticeMode, setSelectedPracticeMode] = useState<"practice" | "real">("practice")
+  // 1:1
+  const [selectedIntro, setSelectedIntro] = useState<number | null>(null)
+  const [selectedStage, setSelectedStage] = useState<string | null>(null)
   const [selectedPersonas, setSelectedPersonas] = useState<string[]>([])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [settings, setSettings] = useState<PersonaSettings>({
@@ -174,6 +190,17 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
   const [selectedResume, setSelectedResume] = useState<number | null>(null)
   const [selectedPortfolio, setSelectedPortfolio] = useState<number | null>(null)
   const [loadingDocs, setLoadingDocs] = useState(false)
+  // 토론
+  const [debateTopics, setDebateTopics] = useState<DebateTopic[]>([])
+  const [debatePersonas, setDebatePersonas] = useState<DebatePersona[]>([])
+  const [selectedTopic, setSelectedTopic] = useState<DebateTopic | null>(null)
+  const [selectedStance, setSelectedStance] = useState<"PRO" | "CON" | null>(null)
+  const [selectedDebatePersona, setSelectedDebatePersona] = useState<DebatePersona | null>(null)
+  const [debateDifficulty, setDebateDifficulty] = useState<"EASY" | "NORMAL" | "HARD">("NORMAL")
+  const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [loadingDebate, setLoadingDebate] = useState(false)
+
+  const isGroup = selectedMode === "group"
 
   useEffect(() => {
     if (open) {
@@ -188,6 +215,15 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
         setResumes(r)
         setPortfolios(p)
       }).finally(() => setLoadingDocs(false))
+
+      setLoadingDebate(true)
+      Promise.all([
+        getDebateTopics().catch(() => []),
+        getDebatePersonas().catch(() => []),
+      ]).then(([t, p]) => {
+        setDebateTopics(t)
+        setDebatePersonas(p)
+      }).finally(() => setLoadingDebate(false))
     }
   }, [open])
 
@@ -216,23 +252,23 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
     onOpenChange(false)
     setTimeout(() => {
       setStep(1)
-      setSelectedIntro(null)
-      setSelectedStage(null)
       setSelectedMode(null)
       setSelectedPracticeMode("practice")
+      setSelectedIntro(null)
+      setSelectedStage(null)
       setSelectedPersonas([])
       setSelectedResume(null)
       setSelectedPortfolio(null)
       setShowAdvanced(false)
+      setSelectedTopic(null)
+      setSelectedStance(null)
+      setSelectedDebatePersona(null)
+      setDebateDifficulty("NORMAL")
+      setCategoryFilter("all")
     }, 200)
   }
 
   const handleNext = () => {
-    if (step === 3 && selectedMode === "group") {
-      handleClose()
-      router.push("/debate")
-      return
-    }
     if (step < 5) setStep(step + 1)
   }
 
@@ -252,34 +288,39 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
       if (prev.includes(personaId)) {
         return prev.filter(id => id !== personaId)
       } else {
-        // Max 3 personas for group interview, 1 for 1:1
-        const maxPersonas = selectedMode === "group" ? 3 : 1
-        if (prev.length >= maxPersonas) {
-          return [...prev.slice(1), personaId]
+        // 1:1은 1명만 선택
+        if (prev.length >= 1) {
+          return [personaId]
         }
         return [...prev, personaId]
       }
     })
   }
 
-  const canProceed = 
-    (step === 1 && selectedIntro !== null) ||
-    (step === 2 && selectedStage !== null) ||
-    (step === 3 && selectedMode !== null) ||
-    (step === 4) || // Persona is optional
-    step === 5
+  const canProceed =
+    (step === 1 && selectedMode !== null) ||
+    (isGroup
+      ? (step === 2 && selectedTopic !== null) ||
+        (step === 3 && selectedStance !== null) ||
+        (step === 4 && selectedDebatePersona !== null) ||
+        step === 5
+      : (step === 2 && selectedIntro !== null) ||
+        (step === 3 && selectedStage !== null) ||
+        step === 4 || // Persona is optional
+        step === 5)
 
   const currentIntro = selfIntros.find(i => i.id === selectedIntro)
   const currentStage = interviewStages.find(s => s.id === selectedStage)
   const currentMode = interviewModes.find(m => m.id === selectedMode)
 
-  const stepLabels = [
-    "자기소개서 선택",
-    "면접 단계",
-    "면접 방식",
-    "면접관 페르소나",
-    "최종 확인"
-  ]
+  const stepLabels = isGroup
+    ? ["면접 방식", "토론 주제", "입장 선택", "토론 상대", "난이도 · 확인"]
+    : ["면접 방식", "자기소개서 선택", "면접 단계", "면접관 페르소나", "최종 확인"]
+
+  const categories = [...new Set(debateTopics.map(t => t.category))]
+  const filteredTopics = categoryFilter === "all"
+    ? debateTopics
+    : debateTopics.filter(t => t.category === categoryFilter)
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -289,7 +330,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
             면접 시작하기
           </DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            자기소개서와 면접 설정을 선택하고 AI 모의 면접을 시작하세요
+            면접 방식과 설정을 선택하고 AI 모의 면접을 시작하세요
           </DialogDescription>
         </DialogHeader>
 
@@ -319,8 +360,102 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
 
         {/* Step Content */}
         <div className="min-h-[360px] py-4">
-          {/* Step 1: Self Introduction Selection */}
+          {/* Step 1: Practice/Real Mode + Interview Mode */}
           {step === 1 && (
+            <div className="space-y-6">
+              {/* Practice vs Real Mode */}
+              <div>
+                <h4 className="mb-3 text-sm font-medium text-foreground">모드 선택</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  {practiceModes.map((mode) => {
+                    const Icon = mode.icon
+                    const isSelected = selectedPracticeMode === mode.id
+                    return (
+                      <button
+                        key={mode.id}
+                        onClick={() => setSelectedPracticeMode(mode.id as "practice" | "real")}
+                        className={cn(
+                          "relative flex items-center gap-3 rounded-xl border p-4 transition-all duration-200",
+                          isSelected
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                        )}
+                      >
+                        <div className={cn(
+                          "flex h-10 w-10 items-center justify-center rounded-lg",
+                          isSelected
+                            ? `${mode.color} text-white`
+                            : "bg-secondary text-muted-foreground"
+                        )}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-sm font-medium text-foreground">{mode.title}</p>
+                          <p className="text-[11px] text-muted-foreground">{mode.description}</p>
+                        </div>
+                        {isSelected && (
+                          <div className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white">
+                            <Check className="h-3 w-3" />
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* 1:1 vs Group */}
+              <div>
+                <h4 className="mb-3 text-sm font-medium text-foreground">면접 방식</h4>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {interviewModes.map((mode) => {
+                    const Icon = mode.icon
+                    const isSelected = selectedMode === mode.id
+                    return (
+                      <button
+                        key={mode.id}
+                        onClick={() => {
+                          setSelectedMode(mode.id)
+                          if (mode.id === "one-on-one" && selectedPersonas.length > 1) {
+                            setSelectedPersonas(selectedPersonas.slice(0, 1))
+                          }
+                        }}
+                        className={cn(
+                          "relative flex flex-col items-center gap-3 rounded-2xl border-2 p-6 text-center transition-all duration-300",
+                          isSelected
+                            ? "border-primary bg-primary/10 shadow-lg shadow-primary/10"
+                            : "border-border hover:border-primary/40 hover:bg-secondary/50"
+                        )}
+                      >
+                        <div className={cn(
+                          "flex h-14 w-14 items-center justify-center rounded-2xl transition-all",
+                          isSelected
+                            ? "bg-primary text-white"
+                            : "bg-secondary text-muted-foreground"
+                        )}>
+                          <Icon className="h-7 w-7" />
+                        </div>
+                        <div>
+                          <p className="text-base font-semibold text-foreground">{mode.title}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">{mode.description}</p>
+                        </div>
+                        {isSelected && (
+                          <div className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-white">
+                            <Check className="h-4 w-4" />
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ===================== 1:1 분기 ===================== */}
+
+          {/* Step 2 (1:1): Self Introduction Selection */}
+          {step === 2 && !isGroup && (
             <div className="space-y-3">
               <p className="mb-4 text-sm text-muted-foreground">
                 면접에 사용할 자기소개서를 선택해주세요
@@ -446,8 +581,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
             </div>
           )}
 
-          {/* Step 2: Interview Stage */}
-          {step === 2 && (
+          {/* Step 3 (1:1): Interview Stage */}
+          {step === 3 && !isGroup && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 면접 단계를 선택해주세요
@@ -481,107 +616,12 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
             </div>
           )}
 
-          {/* Step 3: Interview Mode + Practice/Real Mode */}
-          {step === 3 && (
-            <div className="space-y-6">
-              {/* Practice vs Real Mode */}
-              <div>
-                <h4 className="mb-3 text-sm font-medium text-foreground">모드 선택</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  {practiceModes.map((mode) => {
-                    const Icon = mode.icon
-                    const isSelected = selectedPracticeMode === mode.id
-                    return (
-                      <button
-                        key={mode.id}
-                        onClick={() => setSelectedPracticeMode(mode.id as "practice" | "real")}
-                        className={cn(
-                          "relative flex items-center gap-3 rounded-xl border p-4 transition-all duration-200",
-                          isSelected
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-primary/30 hover:bg-secondary/50"
-                        )}
-                      >
-                        <div className={cn(
-                          "flex h-10 w-10 items-center justify-center rounded-lg",
-                          isSelected 
-                            ? `${mode.color} text-white` 
-                            : "bg-secondary text-muted-foreground"
-                        )}>
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <div className="text-left">
-                          <p className="text-sm font-medium text-foreground">{mode.title}</p>
-                          <p className="text-[11px] text-muted-foreground">{mode.description}</p>
-                        </div>
-                        {isSelected && (
-                          <div className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white">
-                            <Check className="h-3 w-3" />
-                          </div>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* 1:1 vs Group */}
-              <div>
-                <h4 className="mb-3 text-sm font-medium text-foreground">면접 방식</h4>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {interviewModes.map((mode) => {
-                    const Icon = mode.icon
-                    const isSelected = selectedMode === mode.id
-                    return (
-                      <button
-                        key={mode.id}
-                        onClick={() => {
-                          setSelectedMode(mode.id)
-                          if (mode.id === "one-on-one" && selectedPersonas.length > 1) {
-                            setSelectedPersonas(selectedPersonas.slice(0, 1))
-                          }
-                        }}
-                        className={cn(
-                          "relative flex flex-col items-center gap-3 rounded-2xl border-2 p-6 text-center transition-all duration-300",
-                          isSelected
-                            ? "border-primary bg-primary/10 shadow-lg shadow-primary/10"
-                            : "border-border hover:border-primary/40 hover:bg-secondary/50"
-                        )}
-                      >
-                        <div className={cn(
-                          "flex h-14 w-14 items-center justify-center rounded-2xl transition-all",
-                          isSelected
-                            ? "bg-primary text-white"
-                            : "bg-secondary text-muted-foreground"
-                        )}>
-                          <Icon className="h-7 w-7" />
-                        </div>
-                        <div>
-                          <p className="text-base font-semibold text-foreground">{mode.title}</p>
-                          <p className="mt-1 text-sm text-muted-foreground">{mode.description}</p>
-                        </div>
-                        {isSelected && (
-                          <div className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-white">
-                            <Check className="h-4 w-4" />
-                          </div>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 4: Multi-select Persona */}
-          {step === 4 && (
+          {/* Step 4 (1:1): Persona */}
+          {step === 4 && !isGroup && (
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-muted-foreground">
-                  AI 면접관의 성향을 선택해주세요 
-                  {selectedMode === "group" && (
-                    <span className="ml-1 text-primary">(최대 3명)</span>
-                  )}
+                  AI 면접관의 성향을 선택해주세요
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   선택하지 않으면 기본 면접관으로 진행됩니다
@@ -591,7 +631,6 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                 {personas.map((persona) => {
                   const Icon = persona.icon
                   const isSelected = selectedPersonas.includes(persona.id)
-                  const selectionIndex = selectedPersonas.indexOf(persona.id)
                   return (
                     <button
                       key={persona.id}
@@ -603,11 +642,6 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                           : "border-border hover:border-primary/30 hover:bg-secondary/50"
                       )}
                     >
-                      {isSelected && selectedMode === "group" && (
-                        <div className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white">
-                          {selectionIndex + 1}
-                        </div>
-                      )}
                       <div className={cn(
                         "flex h-10 w-10 items-center justify-center rounded-lg",
                         isSelected ? persona.color : "bg-secondary",
@@ -705,8 +739,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
             </div>
           )}
 
-          {/* Step 5: Final Review */}
-          {step === 5 && (
+          {/* Step 5 (1:1): Final Review */}
+          {step === 5 && !isGroup && (
             <div className="space-y-6">
               <div className="text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary">
@@ -730,7 +764,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                 <div className="flex items-center justify-between py-2 border-b border-border/30">
                   <span className="text-sm text-muted-foreground">모드</span>
                   <Badge variant="outline" className={cn(
-                    selectedPracticeMode === "practice" 
+                    selectedPracticeMode === "practice"
                       ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
                       : "bg-rose-500/20 text-rose-400 border-rose-500/30"
                   )}>
@@ -776,7 +810,6 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                   setStarting(true)
                   try {
                     const interviewType = selectedStage === "technical" ? "TECHNICAL" : "PERSONALITY"
-                    const interviewFormat = selectedMode === "group" ? "DEBATE" : "ONE_ON_ONE"
 
                     const { roomId } = await setupInterview({
                       siId: currentIntro.id,
@@ -786,9 +819,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                       jobPosition: currentIntro.jobPosition,
                       interviewType,
                       interviewMode: selectedPracticeMode.toUpperCase(),
-                      interviewFormat,
+                      interviewFormat: "ONE_ON_ONE",
                       aiInterviewer: selectedPersonas[0] || "TEAM_LEAD",
-                      aiCompetitors: interviewFormat === "DEBATE" && selectedPersonas.length > 1 ? selectedPersonas.slice(1).join(",") : undefined,
                       interviewCount,
                       difficulty: settings.difficulty,
                       pressureLevel: settings.pressure,
@@ -819,9 +851,228 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
               </Button>
             </div>
           )}
+
+          {/* ===================== 토론 분기 ===================== */}
+
+          {/* Step 2 (토론): Topic Selection */}
+          {step === 2 && isGroup && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">토론 주제를 선택해주세요</p>
+
+              {loadingDebate ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                </div>
+              ) : (
+                <>
+                  {categories.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant={categoryFilter === "all" ? "default" : "outline"}
+                        onClick={() => setCategoryFilter("all")}
+                      >
+                        전체
+                      </Button>
+                      {categories.map(cat => (
+                        <Button
+                          key={cat}
+                          size="sm"
+                          variant={categoryFilter === cat ? "default" : "outline"}
+                          onClick={() => setCategoryFilter(cat)}
+                        >
+                          {categoryLabel[cat] ?? cat}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {filteredTopics.map(topic => (
+                      <button
+                        key={topic.id}
+                        onClick={() => setSelectedTopic(topic)}
+                        className={cn(
+                          "rounded-xl border p-4 text-left transition-all",
+                          selectedTopic?.id === topic.id
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-sm font-semibold text-foreground">{topic.title}</h3>
+                          <Badge variant="outline" className="shrink-0 text-[10px]">{categoryLabel[topic.category] ?? topic.category}</Badge>
+                        </div>
+                        <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{topic.description}</p>
+                      </button>
+                    ))}
+                  </div>
+
+                  {filteredTopics.length === 0 && (
+                    <p className="py-8 text-center text-sm text-muted-foreground">주제가 없습니다</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Step 3 (토론): Stance Selection */}
+          {step === 3 && isGroup && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">{selectedTopic?.title}</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <button
+                  onClick={() => setSelectedStance("PRO")}
+                  className={cn(
+                    "rounded-xl border p-5 text-left transition-all",
+                    selectedStance === "PRO"
+                      ? "border-blue-500 bg-blue-500/10"
+                      : "border-border hover:border-blue-500/30"
+                  )}
+                >
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/10">
+                      <Target className="h-4 w-4 text-blue-500" />
+                    </div>
+                    <h3 className="font-semibold text-foreground">찬성</h3>
+                  </div>
+                  <ul className="space-y-1">
+                    {selectedTopic?.proKeyPoints.map((point, i) => (
+                      <li key={i} className="text-xs text-muted-foreground">- {point}</li>
+                    ))}
+                  </ul>
+                </button>
+
+                <button
+                  onClick={() => setSelectedStance("CON")}
+                  className={cn(
+                    "rounded-xl border p-5 text-left transition-all",
+                    selectedStance === "CON"
+                      ? "border-rose-500 bg-rose-500/10"
+                      : "border-border hover:border-rose-500/30"
+                  )}
+                >
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-500/10">
+                      <Swords className="h-4 w-4 text-rose-500" />
+                    </div>
+                    <h3 className="font-semibold text-foreground">반대</h3>
+                  </div>
+                  <ul className="space-y-1">
+                    {selectedTopic?.conKeyPoints.map((point, i) => (
+                      <li key={i} className="text-xs text-muted-foreground">- {point}</li>
+                    ))}
+                  </ul>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4 (토론): Persona Selection */}
+          {step === 4 && isGroup && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">토론 상대를 선택해주세요</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {debatePersonas.map(persona => (
+                  <button
+                    key={persona.id}
+                    onClick={() => setSelectedDebatePersona(persona)}
+                    className={cn(
+                      "rounded-xl border p-4 text-left transition-all",
+                      selectedDebatePersona?.id === persona.id
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                    )}
+                  >
+                    <div className="mb-2 flex items-center gap-2">
+                      <Users className="h-4 w-4 text-primary" />
+                      <h3 className="text-sm font-semibold text-foreground">{persona.name}</h3>
+                      <Badge variant="secondary" className="text-[10px]">{persona.difficulty}</Badge>
+                    </div>
+                    <p className="mb-2 text-xs text-muted-foreground">{persona.background}</p>
+                    <p className="text-xs text-muted-foreground/70">스타일: {persona.debateStyle}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Step 5 (토론): Difficulty + Confirm */}
+          {step === 5 && isGroup && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary">
+                  <CheckCircle className="h-8 w-8 text-white" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">토론 준비 완료</h3>
+                <p className="mt-1 text-sm text-muted-foreground">난이도를 확인하고 토론을 시작하세요</p>
+              </div>
+
+              <div className="space-y-3 rounded-xl border border-border bg-secondary/30 p-4">
+                <div className="flex items-center justify-between py-2 border-b border-border/30">
+                  <span className="text-sm text-muted-foreground">모드</span>
+                  <Badge variant="outline" className={cn(
+                    selectedPracticeMode === "practice"
+                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                      : "bg-rose-500/20 text-rose-400 border-rose-500/30"
+                  )}>
+                    {selectedPracticeMode === "practice" ? "연습 모드" : "실전 모드"}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-border/30">
+                  <span className="text-sm text-muted-foreground">주제</span>
+                  <span className="text-sm font-medium text-foreground text-right">{selectedTopic?.title}</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-border/30">
+                  <span className="text-sm text-muted-foreground">입장</span>
+                  <Badge variant={selectedStance === "PRO" ? "default" : "secondary"}>
+                    {selectedStance === "PRO" ? "찬성" : "반대"}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-border/30">
+                  <span className="text-sm text-muted-foreground">상대</span>
+                  <span className="text-sm font-medium text-foreground">{selectedDebatePersona?.name}</span>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-sm text-muted-foreground">난이도</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([["EASY", "쉬움"], ["NORMAL", "보통"], ["HARD", "어려움"]] as const).map(([val, label]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setDebateDifficulty(val)}
+                        className={cn(
+                          "h-8 rounded-lg border px-3 text-xs font-medium transition-all",
+                          debateDifficulty === val
+                            ? "bg-primary/10 border-primary text-primary"
+                            : "border-border text-muted-foreground hover:border-primary/30"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => {
+                  if (!selectedTopic || !selectedStance || !selectedDebatePersona) return
+                  handleClose()
+                  router.push(
+                    `/debate?topicId=${selectedTopic.id}&stance=${selectedStance}&personaId=${selectedDebatePersona.id}&difficulty=${debateDifficulty}&mode=${selectedPracticeMode}`
+                  )
+                }}
+                className="w-full gap-2 py-6 text-base font-semibold bg-foreground text-background shadow-lg hover:bg-foreground/90"
+              >
+                <Mic className="h-5 w-5" />
+                토론 시작하기
+              </Button>
+            </div>
+          )}
         </div>
 
-        {/* Navigation Buttons - Show on all steps including step 5 */}
+        {/* Navigation Buttons */}
         {step <= 5 && (
           <div className="flex justify-between gap-3 border-t border-border/30 pt-4">
             <Button
@@ -839,7 +1090,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                 disabled={!canProceed}
                 className="gap-1 bg-foreground text-background hover:bg-foreground/90"
               >
-                {step === 4 ? "확인" : "다음"}
+                다음
                 <ArrowRight className="h-4 w-4" />
               </Button>
             )}
