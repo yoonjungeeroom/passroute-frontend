@@ -92,10 +92,10 @@ export async function getDebateState(sessionId: number): Promise<DebateStateResp
   )
 }
 
-export async function submitDebateTurn(sessionId: number, content: string): Promise<void> {
+export async function submitDebateTurn(sessionId: number): Promise<void> {
   return apiFetch<void>(
     `/debate/${sessionId}/turn`,
-    { method: "POST", body: JSON.stringify({ content }) },
+    { method: "POST" },
     "토론 턴 제출에 실패했습니다"
   )
 }
