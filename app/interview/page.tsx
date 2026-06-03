@@ -565,6 +565,14 @@ function LiveInterviewScreen({
                   <div className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
                   <span className="text-xs font-medium text-foreground">REC</span>
                 </div>
+                {mode === "practice" && (sttFeedback || faceFeedback) && (
+                  <div className="absolute left-3 right-3 top-12 z-10 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-center gap-2 rounded-lg bg-amber-500/90 px-3 py-2 shadow backdrop-blur-sm">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-white" />
+                      <span className="text-xs font-medium text-white">{sttFeedback || faceFeedback}</span>
+                    </div>
+                  </div>
+                )}
                 {answerState === "answering" && (
                   <div className="absolute bottom-3 left-3 right-3">
                     <div className="flex items-center gap-2 rounded-lg bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
@@ -577,11 +585,6 @@ function LiveInterviewScreen({
                 )}
               </div>
             </div>
-            {(sttFeedback || faceFeedback) && (
-              <div className="mx-3 mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                {sttFeedback || faceFeedback}
-              </div>
-            )}
           </div>
 
           {/* Question + Timer */}
