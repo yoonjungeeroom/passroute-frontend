@@ -26,7 +26,7 @@ export function DebateReportView({ report }: { report: DebateReportResponse }) {
       </div>
 
       {/* 라운드별 피드백 */}
-      {report.turnFeedback.length > 0 && (
+      {report.turnFeedback?.length > 0 && (
         <div className="space-y-3">
           <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
             <FontAwesomeIcon icon={faChartLine} className="h-3.5 w-3.5 text-primary" />

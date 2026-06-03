@@ -17,10 +17,11 @@ import type { InterviewReportResponse, DebateReportResponse } from "@/types/repo
 
 function ScoreRing({ score, size = 64 }: { score: number; size?: number }) {
   const radius = (size - 8) / 2
+  const safeScore = typeof score === "number" && !isNaN(score) ? score : 0
   const circumference = 2 * Math.PI * radius
-  const offset = circumference - (score / 100) * circumference
-  const color = score >= 80 ? "#6B9E7E" : score >= 60 ? "#C4A24E" : "#C45C5C"
-  const displayScore = Number.isInteger(score) ? score : score.toFixed(1)
+  const offset = circumference - (safeScore / 100) * circumference
+  const color = safeScore >= 80 ? "#6B9E7E" : safeScore >= 60 ? "#C4A24E" : "#C45C5C"
+  const displayScore = Number.isInteger(safeScore) ? safeScore : safeScore.toFixed(1)
 
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>

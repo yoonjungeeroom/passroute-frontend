@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, Suspense } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { MobileHeader } from "@/components/dashboard/mobile-header"
@@ -23,6 +23,7 @@ function DebateReportContent() {
   const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
+    if (params.sessionId === undefined) return
     if (!sessionId || isNaN(sessionId)) {
       setStatus("error")
       return
