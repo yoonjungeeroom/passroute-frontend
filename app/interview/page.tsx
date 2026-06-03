@@ -41,7 +41,7 @@ import { useSTT } from "@/hooks/use-stt"
 import { useFaceAnalysis } from "@/hooks/use-face-analysis"
 
 const PRECHECK_PHRASE = "안녕하세요. 면접을 시작하겠습니다. 잘 부탁드립니다."
-const RECORDING_DURATION = 4000 // ms
+const RECORDING_DURATION = 6000 // ms
 
 // Pre-check Component
 function PreCheckScreen({
@@ -55,7 +55,7 @@ function PreCheckScreen({
   onRetest: () => void
   onComplete: () => void
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const videoElRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [phase, setPhase] = useState<"ready" | "recording" | "result">("ready")
   const [progress, setProgress] = useState(0)
@@ -65,9 +65,10 @@ function PreCheckScreen({
   const deviceReady =
     deviceStatus.camera === "connected" && deviceStatus.microphone === "connected"
 
-  useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream
+  const setVideoRef = useCallback((el: HTMLVideoElement | null) => {
+    videoElRef.current = el
+    if (el && stream) {
+      el.srcObject = stream
     }
   }, [stream])
 
@@ -84,23 +85,38 @@ function PreCheckScreen({
     const canvas = canvasRef.current
     const ctx = canvas.getContext("2d")!
 
-    let maxAudioLevel = 0
     let faceFrames = 0
     let totalFrames = 0
     let lastFaceCheck = 0
+    let sttGotText = false
 
+    const aiServerUrl = process.env.NEXT_PUBLIC_AI_WS_URL
     let audioCtx: AudioContext | null = null
-    let analyser: AnalyserNode | null = null
-    let freqData: Uint8Array | null = null
+    let ws: WebSocket | null = null
 
     try {
-      audioCtx = new AudioContext()
+      audioCtx = new AudioContext({ sampleRate: 48000 })
+      await audioCtx.audioWorklet.addModule("/audio-worklet-processor.js")
       const source = audioCtx.createMediaStreamSource(stream)
-      analyser = audioCtx.createAnalyser()
-      analyser.fftSize = 256
-      source.connect(analyser)
-      freqData = new Uint8Array(analyser.frequencyBinCount)
-    } catch { /* ignore */ }
+      const workletNode = new AudioWorkletNode(audioCtx, "pcm-processor", {
+        processorOptions: { sampleRate: audioCtx.sampleRate },
+      })
+      source.connect(workletNode)
+      workletNode.connect(audioCtx.destination)
+
+      ws = new WebSocket(`${aiServerUrl}/ws/stt/1/1`)
+      ws.onopen = () => {
+        workletNode.port.onmessage = (e: MessageEvent) => {
+          if (ws?.readyState === WebSocket.OPEN) ws.send(e.data as ArrayBuffer)
+        }
+      }
+      ws.onmessage = (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data as string)
+          if (data.status === "completed" && data.text) sttGotText = true
+        } catch { /* ignore */ }
+      }
+    } catch { /* AudioWorklet or WebSocket 실패 시 무시 */ }
 
     const startTime = Date.now()
 
@@ -108,15 +124,9 @@ function PreCheckScreen({
       const elapsed = Date.now() - startTime
       setProgress(Math.min(100, (elapsed / RECORDING_DURATION) * 100))
 
-      if (analyser && freqData) {
-        analyser.getByteFrequencyData(freqData)
-        const avg = freqData.reduce((a, b) => a + b, 0) / freqData.length
-        maxAudioLevel = Math.max(maxAudioLevel, avg)
-      }
-
       if (elapsed - lastFaceCheck > 300) {
         lastFaceCheck = elapsed
-        const video = videoRef.current
+        const video = videoElRef.current
         if (video && video.readyState >= 2) {
           ctx.drawImage(video, 0, 0, 160, 120)
           const imageData = ctx.getImageData(30, 10, 100, 100)
@@ -134,9 +144,10 @@ function PreCheckScreen({
       if (elapsed < RECORDING_DURATION) {
         requestAnimationFrame(tick)
       } else {
+        ws?.close()
         audioCtx?.close()
         setFaceOk(totalFrames > 0 && faceFrames / totalFrames > 0.5)
-        setVoiceOk(maxAudioLevel > 20)
+        setVoiceOk(sttGotText)
         setPhase("result")
       }
     }
@@ -170,7 +181,7 @@ function PreCheckScreen({
               <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-border/50 bg-secondary/50" style={{ aspectRatio: "4/3" }}>
                 {stream ? (
                   <>
-                    <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+                    <video ref={setVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                       <div className="h-48 w-36 rounded-2xl border-2 border-dashed border-emerald-400/70" />
                     </div>
@@ -218,7 +229,7 @@ function PreCheckScreen({
               <p className="text-lg font-semibold text-foreground">문구를 소리 내어 읽어주세요</p>
 
               <div className="relative w-full max-w-md overflow-hidden rounded-2xl border-2 border-rose-400 bg-secondary/50" style={{ aspectRatio: "4/3" }}>
-                <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+                <video ref={setVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                   <div className="h-48 w-36 rounded-2xl border-2 border-dashed border-emerald-400/70" />
                 </div>
@@ -248,7 +259,7 @@ function PreCheckScreen({
               </p>
 
               <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-border/50 bg-secondary/50" style={{ aspectRatio: "4/3" }}>
-                <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+                <video ref={setVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
               </div>
 
               <div className="grid grid-cols-2 gap-3 w-full">
