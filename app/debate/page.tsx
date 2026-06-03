@@ -70,6 +70,11 @@ function DebatePageInner() {
   const personaIdParam = searchParams?.get("personaId")
   const difficultyParam = searchParams?.get("difficulty") as "EASY" | "NORMAL" | "HARD" | null
 
+  // 쿼리스트링을 한 번만 안전하게 파싱 (누락/비숫자는 NaN, 잘못된 stance는 false)
+  const topicId = topicIdParam ? Number(topicIdParam) : NaN
+  const personaId = personaIdParam ? Number(personaIdParam) : NaN
+  const isValidStance = stanceParam === "PRO" || stanceParam === "CON"
+
   // Pre-check state
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({
     camera: "checking",
@@ -108,27 +113,27 @@ function DebatePageInner() {
   const { transcript: sttTranscript, audioLevel: sttAudioLevel, feedback: sttFeedback } =
     useDebateSTT({ sessionId, round: currentRound, stream: mediaStream, active: recording })
 
-  // 쿼리스트링 누락 시 대시보드로 (모달을 거치지 않은 직접 접근)
+  // 쿼리스트링 누락/오류 시 대시보드로 (모달을 거치지 않은 직접 접근)
   useEffect(() => {
-    if (!topicIdParam || !personaIdParam || !stanceParam) {
+    if (isNaN(topicId) || isNaN(personaId) || !isValidStance) {
       router.replace("/dashboard")
     }
-  }, [topicIdParam, personaIdParam, stanceParam, router])
+  }, [topicId, personaId, isValidStance, router])
 
   // 모달에서 선택한 주제/상대를 id로 다시 조회해 매칭 (진행 화면 배너 표시용)
   useEffect(() => {
-    if (!topicIdParam || !personaIdParam) return
+    if (isNaN(topicId) || isNaN(personaId)) return
     async function load() {
       try {
         const [t, p] = await Promise.all([getDebateTopics(), getDebatePersonas()])
-        setSelectedTopic(t.find(x => x.id === Number(topicIdParam)) ?? null)
-        setSelectedPersona(p.find(x => x.id === Number(personaIdParam)) ?? null)
+        setSelectedTopic(t.find(x => x.id === topicId) ?? null)
+        setSelectedPersona(p.find(x => x.id === personaId) ?? null)
       } catch {
         // 조회 실패 시 배너 정보만 비어있을 뿐 토론은 진행 가능
       }
     }
     load()
-  }, [topicIdParam, personaIdParam])
+  }, [topicId, personaId])
 
   // Poll debate state with adaptive interval
   const [pollTimeout, setPollTimeout] = useState(false)
@@ -209,16 +214,16 @@ function DebatePageInner() {
   }, [debateState?.latestTurns])
 
   const handleCreateSession = async () => {
-    if (!topicIdParam || !stanceParam || !personaIdParam) return
+    if (isNaN(topicId) || isNaN(personaId) || !stanceParam) return
     // 자동재생 정책 우회 — 사용자 클릭(제스처) 안에서 오디오 요소를 미리 활성화
     if (!audioRef.current) audioRef.current = new Audio()
     audioRef.current.play().then(() => audioRef.current?.pause()).catch(() => {})
     setCreating(true)
     try {
       const { sessionId: sid } = await createDebateSession({
-        topicId: Number(topicIdParam),
+        topicId,
         userStance: stanceParam,
-        personaId: Number(personaIdParam),
+        personaId,
         difficulty: selectedDifficulty,
       })
       setSessionId(sid)
@@ -233,7 +238,7 @@ function DebatePageInner() {
 
   // 사전점검 — 카메라+마이크 획득 및 디바이스 체크
   useEffect(() => {
-    if (phase !== "precheck" || !topicIdParam) return
+    if (phase !== "precheck" || isNaN(topicId)) return
     let cancelled = false
     let audioCtx: AudioContext | null = null
 
@@ -309,7 +314,7 @@ function DebatePageInner() {
 
     checkDevices()
     return () => { cancelled = true; audioCtx?.close() }
-  }, [phase, topicIdParam])
+  }, [phase, topicId])
 
   // 사전점검 비디오 ref 연결
   useEffect(() => {
