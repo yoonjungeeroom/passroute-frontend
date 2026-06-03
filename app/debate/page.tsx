@@ -719,7 +719,7 @@ export default function DebatePage() {
               {/* Step 3: Persona Selection */}
               {setupStep === 3 && (
                 <div className="space-y-4">
-                  <h2 className="text-lg font-semibold">상대 면접관 선택</h2>
+                  <h2 className="text-lg font-semibold">면접 상대 선택</h2>
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     {personas.map(persona => (
