@@ -200,13 +200,19 @@ function DebatePageInner() {
       )
     if (!newAudioTurn || !newAudioTurn.audioUrl) return
     playedTurnIds.current.add(newAudioTurn.id)
-    audioRef.current?.pause()
-    audioRef.current = new Audio(newAudioTurn.audioUrl)
-    audioRef.current.play().catch(() => {})
+    // handleCreateSession에서 활성화해 둔 단일 오디오 요소를 재사용 (자동재생 차단 방지)
+    const audio = audioRef.current ?? (audioRef.current = new Audio())
+    audio.pause()
+    audio.src = newAudioTurn.audioUrl
+    audio.currentTime = 0
+    audio.play().catch((e) => console.warn("[debate] TTS 자동재생 실패:", e))
   }, [debateState?.latestTurns])
 
   const handleCreateSession = async () => {
     if (!topicIdParam || !stanceParam || !personaIdParam) return
+    // 자동재생 정책 우회 — 사용자 클릭(제스처) 안에서 오디오 요소를 미리 활성화
+    if (!audioRef.current) audioRef.current = new Audio()
+    audioRef.current.play().then(() => audioRef.current?.pause()).catch(() => {})
     setCreating(true)
     try {
       const { sessionId: sid } = await createDebateSession({
