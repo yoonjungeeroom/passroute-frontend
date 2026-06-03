@@ -19,9 +19,10 @@ function ScoreRing({ score, size = 64 }: { score: number; size?: number }) {
   const circumference = 2 * Math.PI * radius
   const offset = circumference - (score / 100) * circumference
   const color = score >= 80 ? "#6B9E7E" : score >= 60 ? "#C4A24E" : "#C45C5C"
+  const displayScore = Number.isInteger(score) ? score : score.toFixed(1)
 
   return (
-    <div className="relative" style={{ width: size, height: size }}>
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle
           cx={size / 2} cy={size / 2} r={radius}
@@ -37,24 +38,25 @@ function ScoreRing({ score, size = 64 }: { score: number; size?: number }) {
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-lg font-bold" style={{ color }}>{score}</span>
+        <span className="font-bold leading-none" style={{ color, fontSize: size * 0.28 }}>{displayScore}</span>
       </div>
     </div>
   )
 }
 
-function SkillBar({ label, value, delay = 0 }: { label: string; value: number; delay?: number }) {
-  const color = value >= 85 ? "bg-emerald-500" : value >= 75 ? "bg-amber-500" : "bg-red-400"
+function SkillBar({ label, value, max = 5, delay = 0 }: { label: string; value: number; max?: number; delay?: number }) {
+  const pct = (value / max) * 100
+  const color = pct >= 80 ? "bg-emerald-500" : pct >= 60 ? "bg-amber-500" : "bg-red-400"
   return (
     <div className="group">
       <div className="mb-1.5 flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">{label}</span>
-        <span className="text-xs font-bold text-foreground">{value}</span>
+        <span className="text-xs font-bold text-foreground">{value}<span className="text-muted-foreground font-normal">/{max}</span></span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-muted/50">
         <div
           className={cn("h-full rounded-full transition-all duration-700", color)}
-          style={{ width: `${value}%`, transitionDelay: `${delay}ms` }}
+          style={{ width: `${pct}%`, transitionDelay: `${delay}ms` }}
         />
       </div>
     </div>
@@ -154,8 +156,8 @@ export default function ReportsPage() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               { label: "총 면접", value: reports.length },
-              { label: "평균 점수", value: reports.length > 0 ? Math.round(reports.reduce((s, r) => s + r.totalScore, 0) / reports.length) : "--" },
-              { label: "최고 점수", value: reports.length > 0 ? Math.max(...reports.map(r => r.totalScore)) : "--" },
+              { label: "평균 점수", value: reports.length > 0 ? (reports.reduce((s, r) => s + r.totalScore, 0) / reports.length).toFixed(1) : "--" },
+              { label: "최고 점수", value: reports.length > 0 ? Math.max(...reports.map(r => r.totalScore)).toFixed(1) : "--" },
               { label: "분석 완료", value: reports.filter(r => r.totalScore > 0).length },
             ].map((stat) => (
               <div key={stat.label} className="rounded-xl border border-border bg-white p-4 card-hover">

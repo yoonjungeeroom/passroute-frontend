@@ -821,40 +821,82 @@ export default function DebatePage() {
           ) : phase === "debating" || phase === "ending" ? (
             <div className="flex flex-col" style={{ height: "calc(100vh - 160px)" }}>
               {/* Topic Banner */}
-              <div className="mb-4 rounded-lg border border-border/50 bg-card px-4 py-3">
+              <div className="mb-3 rounded-lg border border-border/50 bg-card px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{selectedTopic?.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      내 입장: {selectedStance === "PRO" ? "찬성" : "반대"} / 상대: {selectedPersona?.name} / {difficultyLabel[selectedDifficulty]}
+                      내 입장: {selectedStance === "PRO" ? "찬성" : "반대"} · 난이도: {difficultyLabel[selectedDifficulty]}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {/* 카메라 self-view */}
-                    {mediaStream && (
-                      <div className="relative h-16 w-24 overflow-hidden rounded-lg border border-border/50 bg-secondary">
-                        <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" />
-                      </div>
-                    )}
-                    {phase === "debating" && (
-                      <Button variant="outline" size="sm" onClick={handleEnd}>
-                        토론 종료
-                      </Button>
-                    )}
+                  {phase === "debating" && (
+                    <Button variant="outline" size="sm" onClick={handleEnd} className="shrink-0">
+                      토론 종료
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Video Section — AI 경쟁자 (왼쪽) / 내 카메라 (오른쪽) */}
+              <div className="mb-3 grid grid-cols-2 gap-3">
+                {/* AI 경쟁자 */}
+                <div className="relative flex flex-col items-center justify-center gap-2 rounded-xl border border-border/50 bg-secondary/30 py-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-secondary border border-border/50 text-lg font-bold text-foreground">
+                    {selectedPersona?.name?.slice(0, 1) ?? "A"}
                   </div>
+                  <div className="text-center">
+                    <p className="text-xs font-semibold text-foreground">{selectedPersona?.name ?? "AI 경쟁자"}</p>
+                    <p className="text-[10px] text-muted-foreground">{selectedStance === "PRO" ? "반대" : "찬성"}</p>
+                  </div>
+                  {polling && !debateState?.waitingForUser && (
+                    <div className="absolute bottom-2 left-0 right-0 flex justify-center">
+                      <div className="flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5">
+                        <Loader2 className="h-2.5 w-2.5 animate-spin text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground">발언 중</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 내 카메라 */}
+                <div className="relative overflow-hidden rounded-xl border border-border/50 bg-secondary/30">
+                  {mediaStream ? (
+                    <>
+                      <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" style={{ minHeight: "120px" }} />
+                      <div className="absolute bottom-2 left-2 rounded-full bg-background/80 px-2 py-0.5">
+                        <p className="text-[10px] font-medium text-foreground">나 · {selectedStance === "PRO" ? "찬성" : "반대"}</p>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2">
+                      <User className="h-8 w-8 text-muted-foreground/40" />
+                      <p className="text-[10px] text-muted-foreground">카메라 없음</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Chat Area */}
-              <div className="flex-1 space-y-4 overflow-y-auto rounded-lg border border-border/50 bg-card p-4">
+              <div className="flex-1 space-y-3 overflow-y-auto rounded-lg border border-border/50 bg-card p-4">
                 {debateState?.latestTurns.map((turn) => {
                   const isUser = turn.speakerType === "USER"
                   const isInterviewer = turn.speakerType === "AI_INTERVIEWER"
-                  const speakerName = isUser
-                    ? "나"
-                    : isInterviewer
-                      ? "면접관"
-                      : (selectedPersona?.name ?? "상대방")
+
+                  // 면접관 말 — 중앙 배너 스타일
+                  if (isInterviewer) {
+                    return (
+                      <div key={turn.id} className="flex justify-center">
+                        <div className="w-full max-w-[90%] rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-900/20">
+                          <div className="mb-1.5 flex items-center justify-center gap-2">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">면접관</span>
+                            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600">{roundLabel[turn.round] ?? turn.round}</Badge>
+                          </div>
+                          <p className="text-center text-sm text-foreground leading-relaxed">{turn.content}</p>
+                        </div>
+                      </div>
+                    )
+                  }
+
                   return (
                     <div
                       key={turn.id}
@@ -864,13 +906,13 @@ export default function DebatePage() {
                         className={`max-w-[75%] rounded-2xl px-4 py-3 ${
                           isUser
                             ? "bg-primary text-white"
-                            : isInterviewer
-                              ? "bg-amber-100 text-foreground dark:bg-amber-900/30"
-                              : "bg-secondary text-foreground"
+                            : "bg-secondary text-foreground"
                         }`}
                       >
                         <div className="mb-1 flex items-center gap-2">
-                          <span className="text-xs font-medium opacity-70">{speakerName}</span>
+                          <span className="text-xs font-medium opacity-70">
+                            {isUser ? "나" : (selectedPersona?.name ?? "상대방")}
+                          </span>
                           {turn.round && (
                             <Badge
                               variant="outline"
@@ -885,17 +927,6 @@ export default function DebatePage() {
                     </div>
                   )
                 })}
-
-                {polling && !debateState?.waitingForUser && (
-                  <div className="flex justify-start">
-                    <div className="rounded-2xl bg-secondary px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">{selectedPersona?.name} 응답 중...</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {pollTimeout && !debateState?.waitingForUser && (
                   <div className="flex justify-center">
