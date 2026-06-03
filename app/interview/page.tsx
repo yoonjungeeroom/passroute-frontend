@@ -601,10 +601,10 @@ function LiveInterviewScreen({
                 </p>
               </div>
               <div className="flex flex-col items-center gap-1 rounded-lg border border-border bg-background px-4 py-2">
-                <span className={cn("font-mono text-2xl font-bold", answerState === "answering" ? "text-primary" : "text-muted-foreground")}>
-                  {formatTime(answerTime)}
+                <span className={cn("font-mono text-2xl font-bold", answerState === "answering" ? (questionTimeLimit - answerTime <= 30 ? "text-destructive" : "text-primary") : "text-muted-foreground")}>
+                  {formatTime(Math.max(0, questionTimeLimit - answerTime))}
                 </span>
-                <span className="font-mono text-xs text-muted-foreground">/ {formatTime(questionTimeLimit)}</span>
+                <span className="font-mono text-xs text-muted-foreground">남은 시간</span>
               </div>
             </div>
 
