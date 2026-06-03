@@ -6,12 +6,13 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { MobileHeader } from "@/components/dashboard/mobile-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ChevronLeft, ChevronDown, Search, X, RotateCcw, BarChart2, Loader2 } from "lucide-react"
+import { ChevronDown, Search, X, Loader2 } from "lucide-react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faBrain, faChartLine, faStar, faArrowTrendUp, faLightbulb } from "@fortawesome/free-solid-svg-icons"
+import { faBrain, faLightbulb } from "@fortawesome/free-solid-svg-icons"
 import { cn } from "@/lib/utils"
 import { getReportList, getInterviewReport, getDebateReport, type ReportListItem } from "@/lib/api/reports"
 import { DebateReportView } from "@/components/reports/DebateReportView"
+import { InterviewReportView } from "@/components/reports/InterviewReportView"
 import { getWorstClip } from "@/lib/api/interview"
 import type { InterviewReportResponse, DebateReportResponse } from "@/types/report"
 
@@ -46,24 +47,7 @@ function ScoreRing({ score, size = 64 }: { score: number; size?: number }) {
   )
 }
 
-function SkillBar({ label, value, max = 5, delay = 0 }: { label: string; value: number; max?: number; delay?: number }) {
-  const pct = (value / max) * 100
-  const color = pct >= 80 ? "bg-emerald-500" : pct >= 60 ? "bg-amber-500" : "bg-red-400"
-  return (
-    <div className="group">
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">{label}</span>
-        <span className="text-xs font-bold text-foreground">{value}<span className="text-muted-foreground font-normal">/{max}</span></span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-muted/50">
-        <div
-          className={cn("h-full rounded-full transition-all duration-700", color)}
-          style={{ width: `${pct}%`, transitionDelay: `${delay}ms` }}
-        />
-      </div>
-    </div>
-  )
-}
+
 
 export default function ReportsPage() {
   const [reports, setReports] = useState<ReportListItem[]>([])
@@ -222,7 +206,7 @@ export default function ReportsPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {reports.map((report, idx) => (
+              {reports.map((report) => (
                 <div
                   key={report.domainId}
                   className={cn(
@@ -287,65 +271,7 @@ export default function ReportsPage() {
                       ) : expandedDebateReport ? (
                         <DebateReportView report={expandedDebateReport} />
                       ) : expandedReport ? (
-                        <div className="space-y-6">
-                          {/* Overall & Scores */}
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="rounded-xl bg-gradient-to-br from-primary/5 to-accent/5 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-foreground flex items-center gap-2">
-                                <FontAwesomeIcon icon={faLightbulb} className="h-3.5 w-3.5 text-amber-500" />
-                                종합 평가
-                              </h4>
-                              <p className="text-sm leading-relaxed text-muted-foreground">{expandedReport.overall}</p>
-                            </div>
-                            <div className="space-y-3">
-                              {expandedReport.itemAverages && Object.entries(expandedReport.itemAverages).map(([key, val], i) => (
-                                <SkillBar key={key} label={key} value={val as number} delay={i * 100} />
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Strengths & Improvements */}
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-emerald-600 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
-                                강점
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{expandedReport.strengths}</p>
-                            </div>
-                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-amber-600 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faArrowTrendUp} className="h-3.5 w-3.5" />
-                                개선점
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{expandedReport.improvements}</p>
-                            </div>
-                          </div>
-
-                          {/* Worst Clip */}
-                          {worstClipUrl && (
-                            <div className="rounded-xl border border-border/50 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-foreground">개선 필요 구간</h4>
-                              <video
-                                src={worstClipUrl}
-                                controls
-                                className="w-full rounded-lg"
-                              />
-                            </div>
-                          )}
-
-                          {/* Actions */}
-                          <div className="flex gap-2 pt-2">
-                            <Button size="sm" variant="outline" className="text-xs gap-1.5">
-                              <RotateCcw className="h-3 w-3" />
-                              재연습
-                            </Button>
-                            <Button size="sm" variant="outline" className="text-xs gap-1.5">
-                              <BarChart2 className="h-3 w-3" />
-                              상세 분석
-                            </Button>
-                          </div>
-                        </div>
+                        <InterviewReportView report={expandedReport} worstClipUrl={worstClipUrl} />
                       ) : null}
                     </div>
                   )}
