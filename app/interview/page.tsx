@@ -345,7 +345,7 @@ function LiveInterviewScreen({
     sessionId,
     questionId: currentQuestion?.questionId ?? 0,
     videoRef: userVideoRef,
-    active: !isPaused,
+    active: answerState === "answering" && !isPaused,
   })
 
   // Timer effects
