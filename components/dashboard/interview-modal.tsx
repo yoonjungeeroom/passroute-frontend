@@ -228,6 +228,11 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
   }
 
   const handleNext = () => {
+    if (step === 3 && selectedMode === "group") {
+      handleClose()
+      router.push("/debate")
+      return
+    }
     if (step < 5) setStep(step + 1)
   }
 
@@ -531,11 +536,6 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                       <button
                         key={mode.id}
                         onClick={() => {
-                          if (mode.id === "group") {
-                            handleClose()
-                            router.push("/debate")
-                            return
-                          }
                           setSelectedMode(mode.id)
                           if (mode.id === "one-on-one" && selectedPersonas.length > 1) {
                             setSelectedPersonas(selectedPersonas.slice(0, 1))
