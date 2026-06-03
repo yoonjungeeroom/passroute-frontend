@@ -89,6 +89,7 @@ function PreCheckScreen({
     let totalFrames = 0
     let lastFaceCheck = 0
     let sttGotText = false
+    let sttAccumText = ""
 
     const aiServerUrl = process.env.NEXT_PUBLIC_AI_WS_URL
     let audioCtx: AudioContext | null = null
@@ -113,7 +114,11 @@ function PreCheckScreen({
       ws.onmessage = (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data as string)
-          if (data.status === "completed" && data.text && data.text.replace(/\s/g, "").length >= 5) sttGotText = true
+          if (data.status === "completed" && data.text) {
+            sttAccumText += data.text as string
+            const keywords = ["안녕", "면접", "시작"]
+            if (keywords.every(k => sttAccumText.includes(k))) sttGotText = true
+          }
         } catch { /* ignore */ }
       }
     } catch { /* AudioWorklet or WebSocket 실패 시 무시 */ }
