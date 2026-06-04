@@ -21,7 +21,7 @@ export interface ReportListResponse {
 }
 
 export async function getReportList(params?: {
-  type?: "all" | "interview" | "debate"
+  type?: "all" | "technical" | "personality" | "debate"
   page?: number
   size?: number
   q?: string

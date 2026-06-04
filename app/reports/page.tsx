@@ -59,7 +59,7 @@ export default function ReportsPage() {
   const [expandedDebateReport, setExpandedDebateReport] = useState<DebateReportResponse | null>(null)
   const [expandedLoading, setExpandedLoading] = useState(false)
   const [worstClipUrl, setWorstClipUrl] = useState<string | null>(null)
-  const [selectedType, setSelectedType] = useState<"all" | "interview" | "debate">("all")
+  const [selectedType, setSelectedType] = useState<"all" | "technical" | "personality" | "debate">("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [page, setPage] = useState(0)
 
@@ -116,11 +116,18 @@ export default function ReportsPage() {
     }
   }
 
-  const getTypeLabel = (type: string) => type === "interview" ? "1:1 면접" : "토론 면접"
-  const getTypeStyle = (type: string) =>
-    type === "interview"
-      ? "border-primary/30 bg-primary/10 text-primary"
-      : "border-accent/30 bg-accent/10 text-accent"
+  const getBadges = (report: ReportListItem): { label: string; style: string }[] => {
+    if (report.reportType === "debate") {
+      return [{ label: "토론", style: "border-accent/30 bg-accent/10 text-accent" }]
+    }
+    const badges = [{ label: "1:1", style: "border-primary/30 bg-primary/10 text-primary" }]
+    if (report.interviewType === "technical") {
+      badges.push({ label: "기술", style: "border-sky-500/30 bg-sky-500/10 text-sky-600" })
+    } else if (report.interviewType === "personality") {
+      badges.push({ label: "인성", style: "border-violet-500/30 bg-violet-500/10 text-violet-600" })
+    }
+    return badges
+  }
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr)
@@ -158,7 +165,7 @@ export default function ReportsPage() {
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex gap-1 rounded-xl border border-border bg-white p-1 h-11 items-center">
-              {(["all", "interview", "debate"] as const).map(type => (
+              {(["all", "technical", "personality", "debate"] as const).map(type => (
                 <button
                   key={type}
                   onClick={() => { setSelectedType(type); setPage(0) }}
@@ -169,7 +176,7 @@ export default function ReportsPage() {
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  {type === "all" ? "전체" : type === "interview" ? "면접" : "토론"}
+                  {type === "all" ? "전체" : type === "technical" ? "기술" : type === "personality" ? "인성" : "토론"}
                 </button>
               ))}
             </div>
@@ -225,20 +232,26 @@ export default function ReportsPage() {
                   >
                     {/* Company Initial */}
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-sm font-semibold text-muted-foreground shrink-0">
-                      {report.companyName.slice(0, 1)}
+                      {(report.companyName ?? report.jobPosition ?? "토론").slice(0, 1)}
                     </div>
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-foreground">{report.companyName}</span>
-                        <Badge variant="outline" className={cn("text-[10px] font-medium", getTypeStyle(report.reportType))}>
-                          {getTypeLabel(report.reportType)}
-                        </Badge>
+                        <span className="font-semibold text-foreground">{report.companyName ?? report.jobPosition ?? "토론"}</span>
+                        {getBadges(report).map((b) => (
+                          <Badge key={b.label} variant="outline" className={cn("text-[10px] font-medium", b.style)}>
+                            {b.label}
+                          </Badge>
+                        ))}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span>{report.jobPosition}</span>
-                        <span className="h-1 w-1 rounded-full bg-border" />
+                        {report.reportType !== "debate" && (
+                          <>
+                            <span>{report.jobPosition}</span>
+                            <span className="h-1 w-1 rounded-full bg-border" />
+                          </>
+                        )}
                         <span>{formatDate(report.date)}</span>
                       </div>
                     </div>
