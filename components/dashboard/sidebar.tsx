@@ -45,7 +45,9 @@ export function Sidebar() {
     <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col border-r border-border/40 bg-white lg:flex">
       {/* Logo */}
       <div className="flex h-16 items-center px-6">
-        <span className="text-2xl font-bold text-foreground">passroute</span>
+        <Link href="/dashboard" className="text-2xl font-bold text-foreground transition-opacity hover:opacity-80">
+          passroute
+        </Link>
       </div>
 
       {/* Navigation */}
