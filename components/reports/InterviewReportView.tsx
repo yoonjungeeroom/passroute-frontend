@@ -5,19 +5,37 @@ import { RotateCcw, BarChart2 } from "lucide-react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faStar, faArrowTrendUp, faLightbulb } from "@fortawesome/free-solid-svg-icons"
 import { SkillBar } from "@/components/reports/SkillBar"
+import { cn } from "@/lib/utils"
 import type { InterviewReportResponse } from "@/types/report"
+
+const ITEM_LABELS: Record<string, string> = {
+  relevance: "관련성",
+  logic: "논리성",
+  specificity: "구체성",
+  conciseness: "간결성",
+  clarity: "명확성",
+  jobRelevance: "직무 적합성",
+  accuracy: "정확성",
+  depth: "답변 깊이",
+}
 
 export function InterviewReportView({
   report,
   worstClipUrl,
+  onReplay,
+  onDetail,
+  compact = false,
 }: {
   report: InterviewReportResponse
   worstClipUrl?: string | null
+  onReplay?: () => void
+  onDetail?: () => void
+  compact?: boolean
 }) {
   return (
     <div className="space-y-6">
       {/* 종합 평가 & 항목 점수 */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className={cn("grid gap-4", !compact && "sm:grid-cols-2")}>
         <div className="rounded-xl bg-gradient-to-br from-primary/5 to-accent/5 p-4">
           <h4 className="mb-2 text-sm font-semibold text-foreground flex items-center gap-2">
             <FontAwesomeIcon icon={faLightbulb} className="h-3.5 w-3.5 text-amber-500" />
@@ -27,13 +45,13 @@ export function InterviewReportView({
         </div>
         <div className="space-y-3">
           {report.itemAverages && Object.entries(report.itemAverages).map(([key, val], i) => (
-            <SkillBar key={key} label={key} value={val as number} delay={i * 100} />
+            <SkillBar key={key} label={ITEM_LABELS[key] ?? key} value={val as number} delay={i * 100} />
           ))}
         </div>
       </div>
 
       {/* 강점 & 개선점 */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className={cn("grid gap-4", !compact && "sm:grid-cols-2")}>
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
           <h4 className="mb-2 text-sm font-semibold text-emerald-600 flex items-center gap-2">
             <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
@@ -59,16 +77,22 @@ export function InterviewReportView({
       )}
 
       {/* 액션 */}
-      <div className="flex gap-2 pt-2">
-        <Button size="sm" variant="outline" className="text-xs gap-1.5">
-          <RotateCcw className="h-3 w-3" />
-          재연습
-        </Button>
-        <Button size="sm" variant="outline" className="text-xs gap-1.5">
-          <BarChart2 className="h-3 w-3" />
-          상세 분석
-        </Button>
-      </div>
+      {(onReplay || onDetail) && (
+        <div className="flex gap-2 pt-2">
+          {onReplay && (
+            <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={onReplay}>
+              <RotateCcw className="h-3 w-3" />
+              재연습
+            </Button>
+          )}
+          {onDetail && (
+            <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={onDetail}>
+              <BarChart2 className="h-3 w-3" />
+              상세 분석
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

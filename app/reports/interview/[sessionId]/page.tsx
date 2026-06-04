@@ -9,6 +9,7 @@ import { Loader2, ChevronLeft, RotateCcw, AlertCircle, Clock } from "lucide-reac
 import { getInterviewReport } from "@/lib/api/reports"
 import { getWorstClip } from "@/lib/api/interview"
 import { InterviewReportView } from "@/components/reports/InterviewReportView"
+import { InterviewReportDetail } from "@/components/reports/InterviewReportDetail"
 import type { InterviewReportResponse } from "@/types/report"
 
 const POLL_INTERVAL_MS = 3000
@@ -74,9 +75,9 @@ function InterviewReportContent() {
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
-      <main className="w-full overflow-auto lg:ml-64">
+      <main className="w-full overflow-auto lg:pl-64">
         <MobileHeader />
-        <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="px-4 py-8 sm:px-6 lg:px-8">
 
           <div className="mb-6 flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={() => router.push("/reports")}>
@@ -141,7 +142,14 @@ function InterviewReportContent() {
           )}
 
           {status === "done" && report && (
-            <InterviewReportView report={report} worstClipUrl={worstClipUrl} />
+            <div className="grid gap-6 lg:grid-cols-3 lg:items-start">
+              <div className="lg:sticky lg:top-8">
+                <InterviewReportView report={report} worstClipUrl={worstClipUrl} compact />
+              </div>
+              <div className="lg:col-span-2">
+                <InterviewReportDetail report={report} />
+              </div>
+            </div>
           )}
         </div>
       </main>

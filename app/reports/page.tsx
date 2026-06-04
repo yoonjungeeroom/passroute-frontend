@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { MobileHeader } from "@/components/dashboard/mobile-header"
 import { Button } from "@/components/ui/button"
@@ -50,6 +51,7 @@ function ScoreRing({ score, size = 64 }: { score: number; size?: number }) {
 
 
 export default function ReportsPage() {
+  const router = useRouter()
   const [reports, setReports] = useState<ReportListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<number | null>(null)
@@ -271,7 +273,12 @@ export default function ReportsPage() {
                       ) : expandedDebateReport ? (
                         <DebateReportView report={expandedDebateReport} />
                       ) : expandedReport ? (
-                        <InterviewReportView report={expandedReport} worstClipUrl={worstClipUrl} />
+                        <InterviewReportView
+                          report={expandedReport}
+                          worstClipUrl={worstClipUrl}
+                          onReplay={report.selfIntroId != null ? () => router.push(`/dashboard?startInterview=${report.selfIntroId}`) : undefined}
+                          onDetail={() => router.push(`/reports/interview/${report.domainId}`)}
+                        />
                       ) : null}
                     </div>
                   )}

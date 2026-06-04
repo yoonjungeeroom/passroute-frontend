@@ -70,7 +70,7 @@ function DebateReportContent() {
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
-      <main className="w-full overflow-auto lg:ml-64">
+      <main className="w-full overflow-auto lg:pl-64">
         <MobileHeader />
         <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
 
