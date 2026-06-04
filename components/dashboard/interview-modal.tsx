@@ -322,6 +322,13 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
     }
   }, [selectedPersonas])
 
+  // 기술면접 선택 시 4단계에서 기술면접관 자동 배정
+  useEffect(() => {
+    if (step === 4 && !isGroup && selectedStage === "technical") {
+      setSelectedPersonas(["TECH_INTERVIEWER"])
+    }
+  }, [step, isGroup, selectedStage])
+
   const handleClose = () => {
     onOpenChange(false)
     setTimeout(() => {
@@ -404,6 +411,11 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
   const filteredTopics = categoryFilter === "all"
     ? debateTopics
     : debateTopics.filter(t => t.category === categoryFilter)
+
+  // 면접 단계에 따라 보여줄 페르소나 필터링
+  const filteredPersonas = selectedStage === "technical"
+    ? personas.filter(p => p.id === "TECH_INTERVIEWER")
+    : personas.filter(p => ["HR_MANAGER", "TEAM_LEAD", "EXECUTIVE"].includes(p.id))
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -704,20 +716,25 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-muted-foreground">
-                  AI 면접관의 성향을 선택해주세요
+                  {selectedStage === "technical"
+                    ? "기술 면접관이 자동으로 배정됩니다"
+                    : "AI 면접관의 성향을 선택해주세요"}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  선택하지 않으면 기본 면접관으로 진행됩니다
-                </p>
+                {selectedStage !== "technical" && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    선택하지 않으면 기본 면접관으로 진행됩니다
+                  </p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {personas.map((persona) => {
+                {filteredPersonas.map((persona) => {
                   const Icon = persona.icon
                   const isSelected = selectedPersonas.includes(persona.id)
+                  const isAutoSelected = selectedStage === "technical"
                   return (
                     <button
                       key={persona.id}
-                      onClick={() => togglePersona(persona.id)}
+                      onClick={() => !isAutoSelected && togglePersona(persona.id)}
                       className={cn(
                         "relative flex flex-col items-center gap-2 rounded-xl border p-3 text-center transition-all duration-200",
                         isSelected
