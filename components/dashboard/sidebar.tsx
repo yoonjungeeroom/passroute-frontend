@@ -2,17 +2,32 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ChevronDown } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { ChevronDown, Settings, LogOut } from "lucide-react"
 import { menuItems } from "@/lib/navigation-config"
 import { getUserProfile, type UserProfile } from "@/lib/api/user"
 
 export function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const [expandedItems, setExpandedItems] = useState<string[]>(["자료 관리"])
   const [user, setUser] = useState<UserProfile | null>(null)
+  const [profileOpen, setProfileOpen] = useState(false)
+
+  const handleLogout = () => {
+    localStorage.removeItem("accessToken")
+    localStorage.removeItem("refreshToken")
+    router.push("/login")
+  }
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null
@@ -122,7 +137,10 @@ export function Sidebar() {
 
       {/* User Profile */}
       <div className="border-t border-border/40 p-3">
-        <div className="flex items-center gap-3 px-3 py-2">
+        <button
+          onClick={() => setProfileOpen(true)}
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-muted/50"
+        >
           <Avatar className="h-9 w-9">
             <AvatarImage src={undefined} alt={user?.name} />
             <AvatarFallback className="bg-primary text-xs font-medium text-white">
@@ -137,8 +155,56 @@ export function Sidebar() {
               {user?.email ?? ""}
             </span>
           </div>
-        </div>
+        </button>
       </div>
+
+      {/* Profile Modal */}
+      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>내 프로필</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex items-center gap-3 py-2">
+            <Avatar className="h-12 w-12">
+              <AvatarImage src={undefined} alt={user?.name} />
+              <AvatarFallback className="bg-primary text-sm font-medium text-white">
+                {user?.name?.slice(0, 2) ?? "—"}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col overflow-hidden">
+              <span className="truncate text-base font-semibold text-foreground">
+                {user?.name ?? "—"}
+              </span>
+              <span className="truncate text-sm text-muted-foreground">
+                {user?.email ?? ""}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 pt-2">
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2"
+              onClick={() => {
+                setProfileOpen(false)
+                router.push("/settings")
+              }}
+            >
+              <Settings className="h-4 w-4" />
+              설정
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-rose-500 hover:bg-rose-500/10 hover:text-rose-500"
+              onClick={handleLogout}
+            >
+              <LogOut className="h-4 w-4" />
+              로그아웃
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </aside>
   )
 }
