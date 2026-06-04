@@ -46,6 +46,61 @@ export interface DebateStateResponse {
   latestTurns: DebateTurn[]
 }
 
+export interface SuggestedTopicCandidate {
+  title: string
+  description: string
+  category: string
+}
+
+export interface SuggestTopicsResponse {
+  candidates: SuggestedTopicCandidate[]
+  newsCount: number
+}
+
+/**
+ * 최신 뉴스 기반 토론 주제 후보 추천 (AI 서버 + 크롤링).
+ * 수 초 걸릴 수 있어 공통 클라이언트와 별개로 자체 타임아웃을 둔다.
+ */
+export async function suggestDebateTopics(data: {
+  keywords?: string[]
+  count?: number
+}): Promise<SuggestTopicsResponse> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 120_000)
+  try {
+    return await apiFetch<SuggestTopicsResponse>(
+      "/debate/topics/suggest",
+      { method: "POST", body: JSON.stringify(data), signal: controller.signal },
+      "토론 주제 추천에 실패했습니다"
+    )
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * 선택한 후보로 실제 토론 주제 생성 + 저장 → topicId(=id) 발급 (HTTP 201).
+ * 뉴스 크롤링/생성이라 수십 초 걸릴 수 있음. 백엔드 타임아웃 180초보다 살짝 길게 잡아
+ * 백엔드 응답(성공/에러 envelope)이 먼저 도착하게 한다.
+ */
+export async function generateDebateTopic(data: {
+  title: string
+  description?: string
+  category: string
+}): Promise<DebateTopic> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 190_000)
+  try {
+    return await apiFetch<DebateTopic>(
+      "/debate/topics/generate",
+      { method: "POST", body: JSON.stringify(data), signal: controller.signal },
+      "토론 주제 생성에 실패했습니다"
+    )
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function getDebateTopics(category?: string): Promise<DebateTopic[]> {
   const query = category ? `?category=${category}` : ""
   return apiFetch<DebateTopic[]>(
