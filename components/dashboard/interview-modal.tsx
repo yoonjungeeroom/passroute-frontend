@@ -236,8 +236,15 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
     setSelectedCandidate(null)
     setGeneratedTopic(null)
     setSelectedTopic(null)
+    // 입력 중이던(Enter 안 친) 키워드도 포함
+    const pending = keywordInput.trim()
+    const finalKeywords = pending && !keywords.includes(pending) ? [...keywords, pending] : keywords
+    if (pending) {
+      setKeywords(finalKeywords)
+      setKeywordInput("")
+    }
     try {
-      const res = await suggestDebateTopics({ keywords, count: suggestCount })
+      const res = await suggestDebateTopics({ keywords: finalKeywords, count: suggestCount })
       setCandidates(res.candidates)
       setNewsCount(res.newsCount)
       if (res.candidates.length === 0) {
@@ -1034,7 +1041,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                           <div>
                             <p className="mb-1 text-[11px] font-medium text-blue-500">찬성 논거</p>
                             <ul className="space-y-0.5">
-                              {generatedTopic.proKeyPoints?.slice(0, 3).map((p, i) => (
+                              {(generatedTopic.proKeyPoints ?? []).slice(0, 3).map((p, i) => (
                                 <li key={i} className="text-[11px] text-muted-foreground">- {p}</li>
                               ))}
                             </ul>
@@ -1042,7 +1049,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                           <div>
                             <p className="mb-1 text-[11px] font-medium text-rose-500">반대 논거</p>
                             <ul className="space-y-0.5">
-                              {generatedTopic.conKeyPoints?.slice(0, 3).map((p, i) => (
+                              {(generatedTopic.conKeyPoints ?? []).slice(0, 3).map((p, i) => (
                                 <li key={i} className="text-[11px] text-muted-foreground">- {p}</li>
                               ))}
                             </ul>
