@@ -69,6 +69,7 @@ function DebatePageInner() {
   const stanceParam = searchParams?.get("stance") as "PRO" | "CON" | null
   const personaIdParam = searchParams?.get("personaId")
   const difficultyParam = searchParams?.get("difficulty") as "EASY" | "NORMAL" | "HARD" | null
+  const topicTitleParam = searchParams?.get("topicTitle") // 생성 주제는 정적 목록에 없어 배너 제목 폴백용
 
   // 쿼리스트링을 한 번만 안전하게 파싱 (누락/비숫자는 NaN, 잘못된 stance는 false)
   const topicId = topicIdParam ? Number(topicIdParam) : NaN
@@ -564,7 +565,7 @@ function DebatePageInner() {
               <div className="mb-3 rounded-lg border border-border/50 bg-card px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{selectedTopic?.title}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{selectedTopic?.title ?? topicTitleParam}</p>
                     <p className="text-xs text-muted-foreground">
                       내 입장: {selectedStance === "PRO" ? "찬성" : "반대"} · 난이도: {difficultyLabel[selectedDifficulty]}
                     </p>
