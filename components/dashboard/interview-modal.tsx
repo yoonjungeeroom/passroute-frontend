@@ -36,6 +36,9 @@ import {
   FileText,
   FolderOpen,
   Target,
+  Sparkles,
+  X,
+  Newspaper,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { setupInterview, startInterview } from "@/lib/api/interview"
@@ -44,8 +47,11 @@ import { getDocumentList, type DocumentItem } from "@/lib/api/documents"
 import {
   getDebateTopics,
   getDebatePersonas,
+  suggestDebateTopics,
+  generateDebateTopic,
   type DebateTopic,
   type DebatePersona,
+  type SuggestedTopicCandidate,
 } from "@/lib/api/debate"
 
 interface InterviewModalProps {
@@ -199,8 +205,76 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
   const [debateDifficulty, setDebateDifficulty] = useState<"EASY" | "NORMAL" | "HARD">("NORMAL")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [loadingDebate, setLoadingDebate] = useState(false)
+  // 토론 주제 — 최신 이슈 추천 흐름
+  const [topicMode, setTopicMode] = useState<"list" | "suggest">("list")
+  const [keywords, setKeywords] = useState<string[]>([])
+  const [keywordInput, setKeywordInput] = useState("")
+  const [suggestCount, setSuggestCount] = useState(3)
+  const [candidates, setCandidates] = useState<SuggestedTopicCandidate[]>([])
+  const [newsCount, setNewsCount] = useState<number | null>(null)
+  const [selectedCandidate, setSelectedCandidate] = useState<SuggestedTopicCandidate | null>(null)
+  const [generatedTopic, setGeneratedTopic] = useState<DebateTopic | null>(null)
+  const [suggesting, setSuggesting] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [topicError, setTopicError] = useState<string | null>(null)
 
   const isGroup = selectedMode === "group"
+
+  const KEYWORD_PRESETS = ["AI", "채용", "개발 문화", "기술 트렌드", "면접"]
+
+  const addKeyword = (raw: string) => {
+    const kw = raw.trim()
+    if (!kw) return
+    setKeywords(prev => (prev.includes(kw) ? prev : [...prev, kw]))
+    setKeywordInput("")
+  }
+
+  const handleSuggest = async () => {
+    setSuggesting(true)
+    setTopicError(null)
+    setCandidates([])
+    setSelectedCandidate(null)
+    setGeneratedTopic(null)
+    setSelectedTopic(null)
+    // 입력 중이던(Enter 안 친) 키워드도 포함
+    const pending = keywordInput.trim()
+    const finalKeywords = pending && !keywords.includes(pending) ? [...keywords, pending] : keywords
+    if (pending) {
+      setKeywords(finalKeywords)
+      setKeywordInput("")
+    }
+    try {
+      const res = await suggestDebateTopics({ keywords: finalKeywords, count: suggestCount })
+      setCandidates(res.candidates)
+      setNewsCount(res.newsCount)
+      if (res.candidates.length === 0) {
+        setTopicError("추천된 주제가 없어요. 키워드를 바꿔 다시 시도해주세요.")
+      }
+    } catch {
+      setTopicError("추천을 불러오지 못했어요. 잠시 후 다시 시도해주세요.")
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
+  const handleGenerate = async () => {
+    if (!selectedCandidate) return
+    setGenerating(true)
+    setTopicError(null)
+    try {
+      const topic = await generateDebateTopic({
+        title: selectedCandidate.title,
+        description: selectedCandidate.description,
+        category: selectedCandidate.category,
+      })
+      setGeneratedTopic(topic)
+      setSelectedTopic(topic) // 이후 3~5단계는 기존 selectedTopic.id 흐름 그대로
+    } catch {
+      setTopicError("주제 생성에 실패했어요. 다시 시도해주세요.")
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   useEffect(() => {
     if (open) {
@@ -265,6 +339,15 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
       setSelectedDebatePersona(null)
       setDebateDifficulty("NORMAL")
       setCategoryFilter("all")
+      setTopicMode("list")
+      setKeywords([])
+      setKeywordInput("")
+      setSuggestCount(3)
+      setCandidates([])
+      setNewsCount(null)
+      setSelectedCandidate(null)
+      setGeneratedTopic(null)
+      setTopicError(null)
     }, 200)
   }
 
@@ -857,61 +940,248 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
           {/* Step 2 (토론): Topic Selection */}
           {step === 2 && isGroup && (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">토론 주제를 선택해주세요</p>
+              {/* 목록 / 최신 이슈 추천 전환 */}
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-secondary/30 p-1">
+                <button
+                  onClick={() => setTopicMode("list")}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-all",
+                    topicMode === "list" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  주제 목록
+                </button>
+                <button
+                  onClick={() => setTopicMode("suggest")}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-all",
+                    topicMode === "suggest" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  최신 이슈로 추천
+                </button>
+              </div>
 
-              {loadingDebate ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                </div>
-              ) : (
-                <>
-                  {categories.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant={categoryFilter === "all" ? "default" : "outline"}
-                        onClick={() => setCategoryFilter("all")}
-                      >
-                        전체
-                      </Button>
-                      {categories.map(cat => (
+              {/* ── 정적 목록 ── */}
+              {topicMode === "list" && (
+                loadingDebate ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  </div>
+                ) : (
+                  <>
+                    {categories.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
                         <Button
-                          key={cat}
                           size="sm"
-                          variant={categoryFilter === cat ? "default" : "outline"}
-                          onClick={() => setCategoryFilter(cat)}
+                          variant={categoryFilter === "all" ? "default" : "outline"}
+                          onClick={() => setCategoryFilter("all")}
                         >
-                          {categoryLabel[cat] ?? cat}
+                          전체
                         </Button>
+                        {categories.map(cat => (
+                          <Button
+                            key={cat}
+                            size="sm"
+                            variant={categoryFilter === cat ? "default" : "outline"}
+                            onClick={() => setCategoryFilter(cat)}
+                          >
+                            {categoryLabel[cat] ?? cat}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {filteredTopics.map(topic => (
+                        <button
+                          key={topic.id}
+                          onClick={() => setSelectedTopic(topic)}
+                          className={cn(
+                            "rounded-xl border p-4 text-left transition-all",
+                            selectedTopic?.id === topic.id
+                              ? "border-primary bg-primary/10"
+                              : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="text-sm font-semibold text-foreground">{topic.title}</h3>
+                            <Badge variant="outline" className="shrink-0 text-[10px]">{categoryLabel[topic.category] ?? topic.category}</Badge>
+                          </div>
+                          <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{topic.description}</p>
+                        </button>
                       ))}
                     </div>
-                  )}
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {filteredTopics.map(topic => (
-                      <button
-                        key={topic.id}
-                        onClick={() => setSelectedTopic(topic)}
-                        className={cn(
-                          "rounded-xl border p-4 text-left transition-all",
-                          selectedTopic?.id === topic.id
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-primary/30 hover:bg-secondary/50"
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="text-sm font-semibold text-foreground">{topic.title}</h3>
-                          <Badge variant="outline" className="shrink-0 text-[10px]">{categoryLabel[topic.category] ?? topic.category}</Badge>
+                    {filteredTopics.length === 0 && (
+                      <p className="py-8 text-center text-sm text-muted-foreground">주제가 없습니다</p>
+                    )}
+                  </>
+                )
+              )}
+
+              {/* ── 최신 이슈 추천 ── */}
+              {topicMode === "suggest" && (
+                generatedTopic ? (
+                  /* 생성 완료 — 이후 다음 단계로 진행 */
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-primary/50 bg-primary/10 p-4">
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-primary" />
+                        <span className="text-xs font-medium text-primary">생성된 주제</span>
+                        <Badge variant="outline" className="ml-auto shrink-0 text-[10px]">
+                          {categoryLabel[generatedTopic.category] ?? generatedTopic.category}
+                        </Badge>
+                      </div>
+                      <h3 className="text-sm font-semibold text-foreground">{generatedTopic.title}</h3>
+                      <p className="mt-1.5 text-xs text-muted-foreground">{generatedTopic.description}</p>
+                      {(generatedTopic.proKeyPoints?.length > 0 || generatedTopic.conKeyPoints?.length > 0) && (
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          <div>
+                            <p className="mb-1 text-[11px] font-medium text-blue-500">찬성 논거</p>
+                            <ul className="space-y-0.5">
+                              {(generatedTopic.proKeyPoints ?? []).slice(0, 3).map((p, i) => (
+                                <li key={i} className="text-[11px] text-muted-foreground">- {p}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="mb-1 text-[11px] font-medium text-rose-500">반대 논거</p>
+                            <ul className="space-y-0.5">
+                              {(generatedTopic.conKeyPoints ?? []).slice(0, 3).map((p, i) => (
+                                <li key={i} className="text-[11px] text-muted-foreground">- {p}</li>
+                              ))}
+                            </ul>
+                          </div>
                         </div>
-                        <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{topic.description}</p>
-                      </button>
-                    ))}
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        setGeneratedTopic(null)
+                        setSelectedTopic(null)
+                        setSelectedCandidate(null)
+                      }}
+                      className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                    >
+                      다른 주제로 다시 추천받기
+                    </button>
                   </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* 키워드 입력 */}
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        관심 키워드를 넣으면 더 맞춤한 주제를 추천해요 <span className="text-xs">(선택)</span>
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {keywords.map(kw => (
+                          <Badge key={kw} variant="secondary" className="gap-1 pr-1 text-xs">
+                            {kw}
+                            <button onClick={() => setKeywords(prev => prev.filter(k => k !== kw))} className="rounded-full p-0.5 hover:bg-foreground/10">
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                        <input
+                          value={keywordInput}
+                          onChange={e => setKeywordInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") { e.preventDefault(); addKeyword(keywordInput) }
+                          }}
+                          placeholder="키워드 입력 후 Enter"
+                          className="min-w-[120px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {KEYWORD_PRESETS.filter(p => !keywords.includes(p)).map(p => (
+                          <button
+                            key={p}
+                            onClick={() => addKeyword(p)}
+                            className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+                          >
+                            + {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-                  {filteredTopics.length === 0 && (
-                    <p className="py-8 text-center text-sm text-muted-foreground">주제가 없습니다</p>
-                  )}
-                </>
+                    {/* 추천 개수 */}
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-muted-foreground">추천 개수</span>
+                      <div className="flex gap-1.5">
+                        {[1, 2, 3, 4, 5].map(n => (
+                          <button
+                            key={n}
+                            onClick={() => setSuggestCount(n)}
+                            className={cn(
+                              "h-8 w-8 rounded-lg border text-xs font-medium transition-all",
+                              suggestCount === n
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:border-primary/30"
+                            )}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <Button onClick={handleSuggest} disabled={suggesting} className="w-full gap-2">
+                      {suggesting ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> 최신 뉴스 분석 중...</>
+                      ) : (
+                        <><Sparkles className="h-4 w-4" /> 주제 추천받기</>
+                      )}
+                    </Button>
+
+                    {topicError && (
+                      <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-400">
+                        {topicError}
+                      </p>
+                    )}
+
+                    {/* 후보 목록 */}
+                    {candidates.length > 0 && (
+                      <div className="space-y-3 border-t border-border/30 pt-4">
+                        {newsCount !== null && (
+                          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Newspaper className="h-3.5 w-3.5" />
+                            최근 뉴스 {newsCount}건 기반 추천
+                          </p>
+                        )}
+                        <div className="grid gap-3">
+                          {candidates.map((c, i) => (
+                            <button
+                              key={i}
+                              onClick={() => setSelectedCandidate(c)}
+                              className={cn(
+                                "rounded-xl border p-4 text-left transition-all",
+                                selectedCandidate === c
+                                  ? "border-primary bg-primary/10"
+                                  : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <h3 className="text-sm font-semibold text-foreground">{c.title}</h3>
+                                <Badge variant="outline" className="shrink-0 text-[10px]">{categoryLabel[c.category] ?? c.category}</Badge>
+                              </div>
+                              <p className="mt-1.5 text-xs text-muted-foreground">{c.description}</p>
+                            </button>
+                          ))}
+                        </div>
+                        <Button onClick={handleGenerate} disabled={!selectedCandidate || generating} className="w-full gap-2">
+                          {generating ? (
+                            <><Loader2 className="h-4 w-4 animate-spin" /> 주제 생성 중... (최대 수십 초)</>
+                          ) : (
+                            "이 주제로 생성하기"
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )
               )}
             </div>
           )}
@@ -1059,9 +1329,16 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                 onClick={() => {
                   if (!selectedTopic || !selectedStance || !selectedDebatePersona) return
                   handleClose()
-                  router.push(
-                    `/debate?topicId=${selectedTopic.id}&stance=${selectedStance}&personaId=${selectedDebatePersona.id}&difficulty=${debateDifficulty}&mode=${selectedPracticeMode}`
-                  )
+                  // topicTitle: 생성된 주제는 정적 목록에 없어 /debate에서 배너 제목을 못 찾으므로 폴백으로 전달
+                  const q = new URLSearchParams({
+                    topicId: String(selectedTopic.id),
+                    stance: selectedStance,
+                    personaId: String(selectedDebatePersona.id),
+                    difficulty: debateDifficulty,
+                    mode: selectedPracticeMode,
+                    topicTitle: selectedTopic.title,
+                  })
+                  router.push(`/debate?${q.toString()}`)
                 }}
                 className="w-full gap-2 py-6 text-base font-semibold bg-foreground text-background shadow-lg hover:bg-foreground/90"
               >
