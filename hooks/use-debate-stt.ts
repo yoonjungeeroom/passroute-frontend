@@ -1,30 +1,29 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import type { DebateRound } from "@/lib/api/debate"
 
-interface UseSTTParams {
-  sessionId: number
-  questionId: number
+interface UseDebateSTTParams {
+  sessionId: number | null
+  round: DebateRound | null
   stream: MediaStream | null
   active: boolean
 }
 
-interface UseSTTReturn {
+interface UseDebateSTTReturn {
   transcript: string
   wpm: number
   fillerCount: number
-  totalFillerCount: number
-  silenceSec: number
   audioLevel: number
   feedback: string | null
 }
 
-export function useSTT({ sessionId, questionId, stream, active }: UseSTTParams): UseSTTReturn {
+const USER_ROUNDS = new Set<string>(["OPENING", "REBUTTAL_1", "REBUTTAL_2", "CLOSING"])
+
+export function useDebateSTT({ sessionId, round, stream, active }: UseDebateSTTParams): UseDebateSTTReturn {
   const [transcript, setTranscript] = useState("")
   const [wpm, setWpm] = useState(0)
   const [fillerCount, setFillerCount] = useState(0)
-  const [totalFillerCount, setTotalFillerCount] = useState(0)
-  const [silenceSec, setSilenceSec] = useState(0)
   const [audioLevel, setAudioLevel] = useState(0)
   const [feedback, setFeedback] = useState<string | null>(null)
 
@@ -57,19 +56,23 @@ export function useSTT({ sessionId, questionId, stream, active }: UseSTTParams):
   }, [])
 
   useEffect(() => {
-    if (!active || !stream || !questionId) {
+    if (!active || !stream || !sessionId || !round || !USER_ROUNDS.has(round)) {
       cleanup()
       return
     }
 
     let cancelled = false
     const aiServerUrl = process.env.NEXT_PUBLIC_AI_WS_URL
+    if (!aiServerUrl) return
 
     async function start() {
       try {
-        const audioCtx = new AudioContext({ sampleRate: 48000 })
+        const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        if (!AudioContextClass) return
+        const audioCtx = new AudioContextClass({ sampleRate: 48000 })
         audioCtxRef.current = audioCtx
 
+        if (!audioCtx.audioWorklet) { audioCtx.close(); return }
         await audioCtx.audioWorklet.addModule("/audio-worklet-processor.js")
 
         if (cancelled) { audioCtx.close(); return }
@@ -98,7 +101,7 @@ export function useSTT({ sessionId, questionId, stream, active }: UseSTTParams):
         }
         updateLevel()
 
-        const ws = new WebSocket(`${aiServerUrl}/ws/stt/${sessionId}/${questionId}`)
+        const ws = new WebSocket(`${aiServerUrl}/ws/stt/debate/${sessionId}/${round}`)
         wsRef.current = ws
 
         ws.onopen = () => {
@@ -112,16 +115,10 @@ export function useSTT({ sessionId, questionId, stream, active }: UseSTTParams):
         ws.onmessage = (e: MessageEvent) => {
           try {
             const data = JSON.parse(e.data as string)
-            if (data.status === "completed") {
-              setTranscript(data.text || "")
+            if (data.status === "completed" && data.text) {
+              setTranscript(prev => prev ? `${prev} ${data.text}` : data.text)
               if (data.wpm) setWpm(data.wpm)
-              if (data.filler_count !== undefined) {
-                setFillerCount(data.filler_count)
-                setTotalFillerCount(prev => prev + (data.filler_count || 0))
-              }
-              setSilenceSec(0)
-            } else if (data.status === "silence") {
-              if (data.silence_sec !== undefined) setSilenceSec(data.silence_sec)
+              if (data.filler_count) setFillerCount(c => c + (data.filler_count as number))
             } else if (data.status === "feedback") {
               setFeedback(data.message || null)
               clearTimeout(feedbackTimerRef.current)
@@ -131,7 +128,7 @@ export function useSTT({ sessionId, questionId, stream, active }: UseSTTParams):
         }
 
         ws.onerror = () => { /* silent */ }
-      } catch { /* getUserMedia or AudioContext error */ }
+      } catch { /* mic or AudioContext error */ }
     }
 
     start()
@@ -141,16 +138,24 @@ export function useSTT({ sessionId, questionId, stream, active }: UseSTTParams):
       clearTimeout(feedbackTimerRef.current)
       cleanup()
     }
-  }, [active, sessionId, questionId, stream, cleanup])
+  }, [active, sessionId, round, stream, cleanup])
 
+  // 라운드 변경 또는 녹음 시작 시 초기화
   useEffect(() => {
     setTranscript("")
     setWpm(0)
     setFillerCount(0)
-    setTotalFillerCount(0)
-    setSilenceSec(0)
     setFeedback(null)
-  }, [questionId])
+  }, [round])
 
-  return { transcript, wpm, fillerCount, totalFillerCount, silenceSec, audioLevel, feedback }
+  useEffect(() => {
+    if (active) {
+      setTranscript("")
+      setWpm(0)
+      setFillerCount(0)
+      setFeedback(null)
+    }
+  }, [active])
+
+  return { transcript, wpm, fillerCount, audioLevel, feedback }
 }

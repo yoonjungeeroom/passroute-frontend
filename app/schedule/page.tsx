@@ -39,7 +39,9 @@ import {
   createSchedule,
   updateSchedule,
   deleteSchedule,
+  getScheduleList,
 } from "@/lib/api/schedule"
+import { getSelfIntroList, type SelfIntroResponse } from "@/lib/api/self-intro"
 import { InterviewModal } from "@/components/dashboard/interview-modal"
 
 const DAYS = ["일", "월", "화", "수", "목", "금", "토"]
@@ -96,6 +98,20 @@ export default function SchedulePage() {
   const [submitting, setSubmitting] = useState(false)
   const [isInterviewModalOpen, setIsInterviewModalOpen] = useState(false)
 
+  // 일정 추가 모달 - 탭 및 데이터
+  const [modalTab, setModalTab] = useState<"unscheduled" | "scheduled">("unscheduled")
+  const [unscheduledIntros, setUnscheduledIntros] = useState<SelfIntroResponse[]>([])
+  const [modalSchedules, setModalSchedules] = useState<Schedule[]>([])
+  const [loadingModalData, setLoadingModalData] = useState(false)
+  // 일정 미정 탭 - 날짜 설정 인라인 폼
+  const [schedulingIntroId, setSchedulingIntroId] = useState<number | null>(null)
+  const [scheduleInputDate, setScheduleInputDate] = useState("")
+  const [scheduleInputTime, setScheduleInputTime] = useState("")
+  // 일정 확정 탭 - 수정 인라인 폼
+  const [editingModalScheduleId, setEditingModalScheduleId] = useState<number | null>(null)
+  const [editModalForm, setEditModalForm] = useState({ date: "", time: "" })
+  const [modalSubmitting, setModalSubmitting] = useState(false)
+
   const fetchSchedules = useCallback(async () => {
     try {
       setLoading(true)
@@ -114,6 +130,31 @@ export default function SchedulePage() {
   useEffect(() => {
     fetchSchedules()
   }, [fetchSchedules])
+
+  const fetchModalData = useCallback(async () => {
+    setLoadingModalData(true)
+    try {
+      const [unscheduled, allScheds] = await Promise.all([
+        getSelfIntroList("unscheduled").catch(() => []),
+        getScheduleList().catch(() => []),
+      ])
+      setUnscheduledIntros(unscheduled)
+      setModalSchedules(allScheds)
+    } finally {
+      setLoadingModalData(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isAddModalOpen) {
+      setModalTab("unscheduled")
+      setSchedulingIntroId(null)
+      setScheduleInputDate("")
+      setScheduleInputTime("")
+      setEditingModalScheduleId(null)
+      fetchModalData()
+    }
+  }, [isAddModalOpen, fetchModalData])
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear()
@@ -173,29 +214,63 @@ export default function SchedulePage() {
     }
   }
 
-  const handleCreateSchedule = async () => {
-    if (!formData.title || !formData.companyName || !formData.jobPosition || !formData.date) return
+  const handleScheduleFromIntro = async (intro: SelfIntroResponse) => {
+    if (!scheduleInputDate) return
     try {
-      setSubmitting(true)
-      const interviewDate = formData.time
-        ? `${formData.date}T${formData.time}:00`
-        : `${formData.date}T00:00:00`
-
+      setModalSubmitting(true)
+      const interviewDate = scheduleInputTime
+        ? `${scheduleInputDate}T${scheduleInputTime}:00`
+        : `${scheduleInputDate}T00:00:00`
       await createSchedule({
-        title: formData.title,
-        companyName: formData.companyName,
-        jobPosition: formData.jobPosition,
+        title: `${intro.companyName} 면접`,
+        companyName: intro.companyName,
+        jobPosition: intro.jobPosition,
         interviewDate,
-        location: formData.location || undefined,
-        memo: formData.memo || undefined,
+        selfIntroId: intro.id,
       })
-      setIsAddModalOpen(false)
-      setFormData(emptyForm)
-      await fetchSchedules()
+      setSchedulingIntroId(null)
+      setScheduleInputDate("")
+      setScheduleInputTime("")
+      await Promise.all([fetchSchedules(), fetchModalData()])
     } catch (err) {
       setError(err instanceof Error ? err.message : "일정 생성에 실패했습니다")
     } finally {
-      setSubmitting(false)
+      setModalSubmitting(false)
+    }
+  }
+
+  const handleEditModalClick = (schedule: Schedule) => {
+    const d = new Date(schedule.interviewDate)
+    setEditingModalScheduleId(schedule.id)
+    setEditModalForm({
+      date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+      time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+    })
+  }
+
+  const handleSaveModalEdit = async () => {
+    if (!editingModalScheduleId || !editModalForm.date) return
+    const schedule = modalSchedules.find(s => s.id === editingModalScheduleId)
+    if (!schedule) return
+    try {
+      setModalSubmitting(true)
+      const interviewDate = editModalForm.time
+        ? `${editModalForm.date}T${editModalForm.time}:00`
+        : `${editModalForm.date}T00:00:00`
+      await updateSchedule(editingModalScheduleId, {
+        title: schedule.title,
+        companyName: schedule.companyName,
+        jobPosition: schedule.jobPosition,
+        interviewDate,
+        location: schedule.location || undefined,
+        memo: schedule.memo || undefined,
+      })
+      setEditingModalScheduleId(null)
+      await Promise.all([fetchSchedules(), fetchModalData()])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "일정 수정에 실패했습니다")
+    } finally {
+      setModalSubmitting(false)
     }
   }
 
@@ -672,7 +747,15 @@ export default function SchedulePage() {
       </main>
 
       {/* Add Schedule Modal */}
-      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+      <Dialog open={isAddModalOpen} onOpenChange={(open) => {
+        setIsAddModalOpen(open)
+        if (!open) {
+          setSchedulingIntroId(null)
+          setScheduleInputDate("")
+          setScheduleInputTime("")
+          setEditingModalScheduleId(null)
+        }
+      }}>
         <DialogContent className="max-h-[85vh] overflow-y-auto border-border/50 bg-card sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
@@ -680,98 +763,236 @@ export default function SchedulePage() {
               일정 추가
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              새로운 면접 일정을 등록하세요.
+              일정이 미정인 자기소개서를 선택하거나 새 일정을 등록하세요.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-4 space-y-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">제목 *</Label>
-              <Input
-                value={formData.title}
-                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                className="border-border/50 bg-secondary/30"
-                placeholder="예: 카카오 1차 기술 면접"
-              />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">회사명 *</Label>
-                <Input
-                  value={formData.companyName}
-                  onChange={(e) => setFormData(prev => ({ ...prev, companyName: e.target.value }))}
-                  className="border-border/50 bg-secondary/30"
-                  placeholder="회사명"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">직무 *</Label>
-                <Input
-                  value={formData.jobPosition}
-                  onChange={(e) => setFormData(prev => ({ ...prev, jobPosition: e.target.value }))}
-                  className="border-border/50 bg-secondary/30"
-                  placeholder="직무"
-                />
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">날짜 *</Label>
-                <Input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                  className="border-border/50 bg-secondary/30"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">시간</Label>
-                <Input
-                  type="time"
-                  value={formData.time}
-                  onChange={(e) => setFormData(prev => ({ ...prev, time: e.target.value }))}
-                  className="border-border/50 bg-secondary/30"
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">장소</Label>
-              <Input
-                value={formData.location}
-                onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
-                className="border-border/50 bg-secondary/30"
-                placeholder="선택 사항"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">메모</Label>
-              <Textarea
-                value={formData.memo}
-                onChange={(e) => setFormData(prev => ({ ...prev, memo: e.target.value }))}
-                className="border-border/50 bg-secondary/30"
-                placeholder="선택 사항"
-                rows={3}
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setIsAddModalOpen(false)
-                  setFormData(emptyForm)
-                }}
-              >
-                취소
-              </Button>
-              <Button
-                className="bg-primary text-white hover:bg-primary/90"
-                disabled={!formData.title || !formData.companyName || !formData.jobPosition || !formData.date || submitting}
-                onClick={handleCreateSchedule}
-              >
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "등록"}
-              </Button>
-            </div>
+          {/* 탭 전환 */}
+          <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-secondary/30 p-1">
+            <button
+              onClick={() => {
+                setModalTab("unscheduled")
+                setSchedulingIntroId(null)
+              }}
+              className={cn(
+                "rounded-lg py-2 text-sm font-medium transition-all",
+                modalTab === "unscheduled"
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              일정 미정
+            </button>
+            <button
+              onClick={() => {
+                setModalTab("scheduled")
+                setEditingModalScheduleId(null)
+              }}
+              className={cn(
+                "rounded-lg py-2 text-sm font-medium transition-all",
+                modalTab === "scheduled"
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              일정 확정
+            </button>
           </div>
+
+          {/* 탭 콘텐츠 */}
+          {loadingModalData ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : modalTab === "unscheduled" ? (
+            <div className="mt-1 space-y-3">
+              {unscheduledIntros.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <CalendarIcon className="mb-3 h-10 w-10 text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">일정이 미정인 자기소개서가 없습니다</p>
+                </div>
+              ) : (
+                unscheduledIntros.map((intro) => (
+                  <div
+                    key={intro.id}
+                    className={cn(
+                      "rounded-xl border p-4 transition-all duration-200",
+                      schedulingIntroId === intro.id
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-border/50 bg-secondary/20 hover:bg-secondary/40"
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-foreground">{intro.companyName}</p>
+                        <p className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{intro.jobPosition}</span>
+                          {intro.interviewStage && (
+                            <Badge variant="outline" className="ml-1 shrink-0 border-border/50 text-[10px]">
+                              {intro.interviewStage}
+                            </Badge>
+                          )}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={schedulingIntroId === intro.id ? "secondary" : "outline"}
+                        className="shrink-0 gap-1.5 text-xs"
+                        onClick={() => {
+                          if (schedulingIntroId === intro.id) {
+                            setSchedulingIntroId(null)
+                          } else {
+                            setSchedulingIntroId(intro.id)
+                            setScheduleInputDate("")
+                            setScheduleInputTime("")
+                          }
+                        }}
+                      >
+                        <CalendarIcon className="h-3.5 w-3.5" />
+                        일정 설정
+                      </Button>
+                    </div>
+
+                    {schedulingIntroId === intro.id && (
+                      <div className="mt-3 space-y-3 rounded-lg border border-primary/30 bg-card p-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">날짜 *</Label>
+                            <Input
+                              type="date"
+                              value={scheduleInputDate}
+                              onChange={(e) => setScheduleInputDate(e.target.value)}
+                              className="border-border/50 bg-secondary/30"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">시간</Label>
+                            <Input
+                              type="time"
+                              value={scheduleInputTime}
+                              onChange={(e) => setScheduleInputTime(e.target.value)}
+                              className="border-border/50 bg-secondary/30"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setSchedulingIntroId(null)}
+                          >
+                            취소
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-primary text-white hover:bg-primary/90"
+                            disabled={!scheduleInputDate || modalSubmitting}
+                            onClick={() => handleScheduleFromIntro(intro)}
+                          >
+                            {modalSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "등록"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="mt-1 space-y-3">
+              {modalSchedules.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <CalendarIcon className="mb-3 h-10 w-10 text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">등록된 일정이 없습니다</p>
+                </div>
+              ) : (
+                modalSchedules.map((schedule) => (
+                  <div
+                    key={schedule.id}
+                    className={cn(
+                      "rounded-xl border p-4 transition-all duration-200",
+                      editingModalScheduleId === schedule.id
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-border/50 bg-secondary/20 hover:bg-secondary/40"
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-foreground">{schedule.companyName}</p>
+                        <p className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{schedule.jobPosition}</span>
+                        </p>
+                        <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                          <CalendarIcon className="h-3 w-3 shrink-0" />
+                          {formatScheduleDate(schedule.interviewDate)}{" "}
+                          {formatScheduleTime(schedule.interviewDate)}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={editingModalScheduleId === schedule.id ? "secondary" : "outline"}
+                        className="shrink-0 gap-1.5 text-xs"
+                        onClick={() => {
+                          if (editingModalScheduleId === schedule.id) {
+                            setEditingModalScheduleId(null)
+                          } else {
+                            handleEditModalClick(schedule)
+                          }
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        수정
+                      </Button>
+                    </div>
+
+                    {editingModalScheduleId === schedule.id && (
+                      <div className="mt-3 space-y-3 rounded-lg border border-primary/30 bg-card p-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">날짜 *</Label>
+                            <Input
+                              type="date"
+                              value={editModalForm.date}
+                              onChange={(e) => setEditModalForm(prev => ({ ...prev, date: e.target.value }))}
+                              className="border-border/50 bg-secondary/30"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">시간</Label>
+                            <Input
+                              type="time"
+                              value={editModalForm.time}
+                              onChange={(e) => setEditModalForm(prev => ({ ...prev, time: e.target.value }))}
+                              className="border-border/50 bg-secondary/30"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingModalScheduleId(null)}
+                          >
+                            취소
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-primary text-white hover:bg-primary/90"
+                            disabled={!editModalForm.date || modalSubmitting}
+                            onClick={handleSaveModalEdit}
+                          >
+                            {modalSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "저장"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

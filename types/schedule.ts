@@ -26,6 +26,7 @@ export interface ScheduleCreateRequest {
   interviewDate: string // ISO datetime string
   location?: string
   memo?: string
+  selfIntroId?: number
 }
 
 export interface ScheduleUpdateRequest {

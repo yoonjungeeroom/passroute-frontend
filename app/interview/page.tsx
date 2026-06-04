@@ -40,6 +40,9 @@ import type { SessionQuestion, AnswerProgressResponse } from "@/types/interview"
 import { useSTT } from "@/hooks/use-stt"
 import { useFaceAnalysis } from "@/hooks/use-face-analysis"
 
+const PRECHECK_PHRASE = "안녕하세요. 면접을 시작하겠습니다."
+const RECORDING_DURATION = 6000 // ms
+
 // Pre-check Component
 function PreCheckScreen({
   deviceStatus,
@@ -52,56 +55,115 @@ function PreCheckScreen({
   onRetest: () => void
   onComplete: () => void
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const videoElRef = useRef<HTMLVideoElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const [phase, setPhase] = useState<"ready" | "recording" | "result">("ready")
+  const [progress, setProgress] = useState(0)
+  const [faceOk, setFaceOk] = useState<boolean | null>(null)
+  const [voiceOk, setVoiceOk] = useState<boolean | null>(null)
 
-  useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream
+  const deviceReady =
+    deviceStatus.camera === "connected" && deviceStatus.microphone === "connected"
+
+  const setVideoRef = useCallback((el: HTMLVideoElement | null) => {
+    videoElRef.current = el
+    if (el && stream) {
+      el.srcObject = stream
     }
   }, [stream])
 
-  const allPassed =
-    deviceStatus.camera === "connected" &&
-    deviceStatus.microphone === "connected" &&
-    deviceStatus.faceDetected === "detected" &&
-    deviceStatus.audioInput === "detected"
+  const startRecording = useCallback(async () => {
+    if (!stream) return
+    setPhase("recording")
+    setProgress(0)
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "connected":
-      case "detected":
-        return <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-      case "error":
-      case "not-detected":
-        return <XCircle className="h-4 w-4 text-rose-400" />
-      default:
-        return <div className="h-4 w-4 animate-pulse rounded-full bg-muted-foreground/50" />
+    if (!canvasRef.current) {
+      canvasRef.current = document.createElement("canvas")
+      canvasRef.current.width = 160
+      canvasRef.current.height = 120
     }
-  }
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext("2d")!
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "connected":
-      case "detected":
-        return "정상"
-      case "error":
-      case "not-detected":
-        return "미연결"
-      default:
-        return "확인 중..."
+    let faceFrames = 0
+    let totalFrames = 0
+    let lastFaceCheck = 0
+    let sttGotText = false
+    let sttAccumText = ""
+
+    const aiServerUrl = process.env.NEXT_PUBLIC_AI_WS_URL
+    let audioCtx: AudioContext | null = null
+    let ws: WebSocket | null = null
+
+    try {
+      audioCtx = new AudioContext({ sampleRate: 48000 })
+      await audioCtx.audioWorklet.addModule("/audio-worklet-processor.js")
+      const source = audioCtx.createMediaStreamSource(stream)
+      const workletNode = new AudioWorkletNode(audioCtx, "pcm-processor", {
+        processorOptions: { sampleRate: audioCtx.sampleRate },
+      })
+      source.connect(workletNode)
+      workletNode.connect(audioCtx.destination)
+
+      ws = new WebSocket(`${aiServerUrl}/ws/stt/1/1`)
+      ws.onopen = () => {
+        workletNode.port.onmessage = (e: MessageEvent) => {
+          if (ws?.readyState === WebSocket.OPEN) ws.send(e.data as ArrayBuffer)
+        }
+      }
+      ws.onmessage = (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data as string)
+          if (data.status === "completed" && data.text) {
+            sttAccumText += data.text as string
+            const keywords = ["안녕", "면접", "시작"]
+            if (keywords.every(k => sttAccumText.includes(k))) sttGotText = true
+          }
+        } catch { /* ignore */ }
+      }
+    } catch { /* AudioWorklet or WebSocket 실패 시 무시 */ }
+
+    const startTime = Date.now()
+
+    const tick = () => {
+      const elapsed = Date.now() - startTime
+      setProgress(Math.min(100, (elapsed / RECORDING_DURATION) * 100))
+
+      if (elapsed - lastFaceCheck > 300) {
+        lastFaceCheck = elapsed
+        const video = videoElRef.current
+        if (video && video.readyState >= 2) {
+          ctx.drawImage(video, 0, 0, 160, 120)
+          const imageData = ctx.getImageData(30, 10, 100, 100)
+          const pixels = imageData.data
+          let skinTone = 0
+          for (let i = 0; i < pixels.length; i += 4) {
+            const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2]
+            if (r > 80 && g > 50 && b > 30 && r > g && (r - g) > 15) skinTone++
+          }
+          totalFrames++
+          if (skinTone / (pixels.length / 4) > 0.08) faceFrames++
+        }
+      }
+
+      if (elapsed < RECORDING_DURATION) {
+        requestAnimationFrame(tick)
+      } else {
+        ws?.close()
+        audioCtx?.close()
+        setFaceOk(totalFrames > 0 && faceFrames / totalFrames > 0.5)
+        setVoiceOk(sttGotText)
+        setPhase("result")
+      }
     }
-  }
 
-  const statusItems = [
-    { icon: Camera, label: "카메라 연결 상태", status: deviceStatus.camera },
-    { icon: Mic, label: "마이크 연결 상태", status: deviceStatus.microphone },
-    { icon: User, label: "얼굴 인식 여부", status: deviceStatus.faceDetected },
-    { icon: Volume2, label: "음성 입력 감지", status: deviceStatus.audioInput },
-  ]
+    requestAnimationFrame(tick)
+  }, [stream])
+
+  const bothPassed = faceOk === true && voiceOk === true
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
       <header className="flex items-center justify-between border-b border-border/50 px-6 py-4">
         <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
           <ChevronLeft className="h-4 w-4" />
@@ -111,127 +173,126 @@ function PreCheckScreen({
         <div className="w-[140px]" />
       </header>
 
-      {/* Main Content */}
       <main className="flex flex-1 items-center justify-center p-6">
-        <div className="flex w-full max-w-3xl flex-col gap-6">
-          {/* Top: Webcam Preview */}
-          <div className="space-y-3">
-            <div className="relative mx-auto aspect-video max-w-2xl overflow-hidden rounded-2xl border border-border/50 bg-secondary/50">
-              {stream ? (
-                <>
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="h-full w-full object-cover"
-                  />
-                  {/* Face guide overlay */}
-                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                    <svg width="180" height="240" viewBox="0 0 180 240" fill="none" className="opacity-60">
-                      <ellipse cx="90" cy="95" rx="70" ry="85"
-                        stroke={deviceStatus.faceDetected === "detected" ? "#22c55e" : "#ef4444"}
-                        strokeWidth="2" strokeDasharray="8 4" fill="none" />
-                      <path d="M20 240 Q20 190 90 180 Q160 190 160 240"
-                        stroke={deviceStatus.faceDetected === "detected" ? "#22c55e" : "#ef4444"}
-                        strokeWidth="2" strokeDasharray="8 4" fill="none" />
-                    </svg>
-                  </div>
-                </>
-              ) : (
-                <div className="flex h-full items-center justify-center">
-                  <div className="relative">
-                    <div className="h-48 w-40 rounded-full border-2 border-dashed border-primary/50" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <User className="h-20 w-20 text-muted-foreground/30" />
-                    </div>
-                  </div>
+        <div className="flex w-full max-w-xl flex-col items-center gap-6">
+
+          {/* 타이틀 */}
+          <div className="text-center">
+            {phase === "ready" && <>
+              <p className="text-lg font-semibold text-foreground">카메라 가이드에 얼굴을 맞추고</p>
+              <p className="text-lg font-semibold text-foreground">아래 문구를 소리 내어 읽어주세요</p>
+            </>}
+            {phase === "recording" && <p className="text-lg font-semibold text-foreground">문구를 소리 내어 읽어주세요</p>}
+            {phase === "result" && <p className="text-xl font-bold text-foreground">
+              {bothPassed ? "얼굴과 음성이 정상 인식되었어요!" : "인식에 실패한 항목이 있어요"}
+            </p>}
+          </div>
+
+          {/* 카메라 - 항상 마운트 유지 */}
+          <div className={cn(
+            "relative w-full max-w-md overflow-hidden rounded-2xl bg-secondary/50",
+            phase === "recording" ? "border-2 border-rose-400" : "border border-border/50"
+          )} style={{ aspectRatio: "4/3" }}>
+            {stream ? (
+              <>
+                <video ref={setVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div className="h-48 w-36 rounded-2xl border-2 border-dashed border-emerald-400/70" />
                 </div>
-              )}
-              <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-background/80 px-3 py-1.5 backdrop-blur-sm">
-                <div className={cn("h-2 w-2 rounded-full", stream ? "animate-pulse bg-rose-500" : "bg-muted-foreground")} />
-                <span className="text-xs font-medium text-foreground">{stream ? "LIVE" : "OFF"}</span>
+                {phase === "recording" && (
+                  <div className="absolute left-3 top-3 flex items-center gap-2 rounded-full bg-rose-500/90 px-3 py-1">
+                    <div className="h-2 w-2 animate-pulse rounded-full bg-white" />
+                    <span className="text-xs font-medium text-white">REC</span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <User className="h-20 w-20 text-muted-foreground/30" />
+              </div>
+            )}
+          </div>
+
+          {/* 진행바 (recording) */}
+          {phase === "recording" && (
+            <div className="w-full space-y-2">
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary transition-all duration-100" style={{ width: `${progress}%` }} />
+              </div>
+              <p className="text-center text-sm text-muted-foreground">분석 중...</p>
+            </div>
+          )}
+
+          {/* 결과 (result) */}
+          {phase === "result" && (
+            <div className="grid grid-cols-2 gap-3 w-full">
+              <div className={cn("flex items-center justify-center gap-2 rounded-xl border p-4",
+                faceOk ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50")}>
+                {faceOk ? <CheckCircle2 className="h-5 w-5 text-emerald-500" /> : <XCircle className="h-5 w-5 text-rose-500" />}
+                <span className={cn("text-sm font-medium", faceOk ? "text-emerald-700" : "text-rose-700")}>
+                  얼굴 인식 {faceOk ? "성공" : "실패"}
+                </span>
+              </div>
+              <div className={cn("flex items-center justify-center gap-2 rounded-xl border p-4",
+                voiceOk ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50")}>
+                {voiceOk ? <CheckCircle2 className="h-5 w-5 text-emerald-500" /> : <XCircle className="h-5 w-5 text-rose-500" />}
+                <span className={cn("text-sm font-medium", voiceOk ? "text-emerald-700" : "text-rose-700")}>
+                  음성 인식 {voiceOk ? "성공" : "실패"}
+                </span>
               </div>
             </div>
-            <p className="text-center text-sm text-muted-foreground">
-              {stream ? "얼굴을 중앙에 맞춰주세요" : "카메라 권한을 허용해주세요"}
-            </p>
+          )}
+
+          {/* 문구 + 버튼 영역 */}
+          <div className="w-full rounded-xl border border-border bg-muted/30 px-6 py-4 text-center">
+            <p className="text-base font-medium text-foreground">"{PRECHECK_PHRASE}"</p>
           </div>
 
-          {/* Bottom: Status Panel */}
-          <div className="space-y-4">
-            {/* Status items in a row */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {statusItems.map((item, index) => (
-                <div
-                  key={index}
-                  className="flex flex-col items-center gap-2 rounded-xl border border-border/30 bg-card p-4"
-                >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                    <item.icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <span className="text-xs font-medium text-foreground">{item.label}</span>
-                  <div className="flex items-center gap-1.5">
-                    {getStatusIcon(item.status)}
-                    <span
-                      className={cn(
-                        "text-xs font-medium",
-                        item.status === "connected" || item.status === "detected"
-                          ? "text-emerald-400"
-                          : item.status === "error" || item.status === "not-detected"
-                          ? "text-rose-400"
-                          : "text-muted-foreground"
-                      )}
-                    >
-                      {getStatusText(item.status)}
-                    </span>
-                  </div>
-                </div>
-              ))}
+          {phase === "ready" && (
+            <div className="grid grid-cols-2 gap-3 w-full text-xs">
+              <div className={cn("flex items-center gap-2 rounded-lg border px-3 py-2",
+                deviceStatus.camera === "connected" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-border text-muted-foreground")}>
+                {deviceStatus.camera === "connected" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <div className="h-3.5 w-3.5 animate-pulse rounded-full bg-muted-foreground/40" />}
+                카메라 {deviceStatus.camera === "connected" ? "연결됨" : "확인 중..."}
+              </div>
+              <div className={cn("flex items-center gap-2 rounded-lg border px-3 py-2",
+                deviceStatus.microphone === "connected" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-border text-muted-foreground")}>
+                {deviceStatus.microphone === "connected" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <div className="h-3.5 w-3.5 animate-pulse rounded-full bg-muted-foreground/40" />}
+                마이크 {deviceStatus.microphone === "connected" ? "연결됨" : "확인 중..."}
+              </div>
             </div>
+          )}
 
-            {/* Checklist Summary */}
-            <div className="flex items-center justify-center gap-3 rounded-xl border border-border/30 bg-card p-4">
-              {allPassed ? (
-                <>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20">
-                    <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground">모든 점검이 완료되었습니다</p>
-                    <p className="text-sm text-muted-foreground">면접을 시작할 준비가 되었어요</p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/20">
-                    <AlertCircle className="h-5 w-5 text-amber-400" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground">점검이 진행 중입니다</p>
-                    <p className="text-sm text-muted-foreground">카메라 앞에서 말씀해 주세요</p>
-                  </div>
-                </>
-              )}
-            </div>
+          {phase === "result" && !bothPassed && (
+            <p className="text-sm text-muted-foreground text-center">
+              {!faceOk && "카메라 가이드 안에 얼굴을 맞춰주세요. "}
+              {!voiceOk && "조금 더 크게 말씀해 주세요."}
+            </p>
+          )}
 
-            {/* Action Buttons */}
-            <div className="flex gap-3">
-              <Button variant="outline" className="flex-1 gap-1.5 border-border/50" onClick={onRetest}>
+          <div className="flex w-full gap-3">
+            {phase === "ready" && <>
+              <Button variant="outline" className="flex-1 gap-1.5" onClick={onRetest}>
                 <RotateCcw className="h-4 w-4" />
-                다시 테스트
+                다시 시도
               </Button>
-              <Button
-                className="flex-1 gap-1.5 text-white hover:opacity-90"
-                style={{ backgroundColor: "#61A4BC" }}
-                disabled={!allPassed}
-                onClick={onComplete}
-              >
-                테스트 완료
+              <Button className="flex-1 gap-1.5" disabled={!deviceReady} onClick={startRecording}>
+                <Mic className="h-4 w-4" />
+                녹화 시작
+              </Button>
+            </>}
+            {phase === "result" && <>
+              <Button variant="outline" className="flex-1 gap-1.5" onClick={() => { setPhase("ready"); setFaceOk(null); setVoiceOk(null); setProgress(0) }}>
+                <RotateCcw className="h-4 w-4" />
+                다시 하기
+              </Button>
+              <Button className="flex-1 gap-1.5" disabled={!bothPassed} onClick={onComplete}>
+                확인 완료
                 <ArrowRight className="h-4 w-4" />
               </Button>
-            </div>
+            </>}
           </div>
+
         </div>
       </main>
     </div>
@@ -321,7 +382,6 @@ function LiveInterviewScreen({
   const [isPaused, setIsPaused] = useState(false)
   const [reAnswerCount, setReAnswerCount] = useState(0)
   const [followUpQuestion, setFollowUpQuestion] = useState<{ id: number; text: string } | null>(null)
-  const [verbalScores, setVerbalScores] = useState({ structure: 0, logic: 0, specificity: 0, jobFit: 0 })
 
   const currentQuestion = followUpQuestion
     ? { questionId: followUpQuestion.id, questionText: followUpQuestion.text, questionOrder: -1 }
@@ -330,7 +390,7 @@ function LiveInterviewScreen({
   const questionTimeLimit = 210 // 3:30
 
   // STT hook
-  const { transcript, wpm, fillerCount, audioLevel, feedback: sttFeedback } = useSTT({
+  const { transcript, wpm, fillerCount, totalFillerCount, silenceSec, audioLevel, feedback: sttFeedback } = useSTT({
     sessionId,
     questionId: currentQuestion?.questionId ?? 0,
     stream,
@@ -342,11 +402,11 @@ function LiveInterviewScreen({
   }, [transcript])
 
   // Face analysis hook - always active during interview
-  const { gazeRatio, blinkCount, ear, faceDetected, feedback: faceFeedback } = useFaceAnalysis({
+  const { gazeRatio, blinkCount, gazeOffCount, ear, faceDetected, feedback: faceFeedback } = useFaceAnalysis({
     sessionId,
     questionId: currentQuestion?.questionId ?? 0,
     videoRef: userVideoRef,
-    active: !isPaused,
+    active: answerState === "answering" && !isPaused,
   })
 
   // Timer effects
@@ -383,14 +443,6 @@ function LiveInterviewScreen({
         answerText: lastTranscriptRef.current || transcript,
         voiceData: wpm > 0 ? { filler_word_count: fillerCount, wpm } : undefined,
       })
-      if (result.evaluation) {
-        setVerbalScores({
-          structure: result.evaluation.structure ?? 0,
-          logic: result.evaluation.logic ?? 0,
-          specificity: result.evaluation.specificity ?? 0,
-          jobFit: result.evaluation.jobFit ?? 0,
-        })
-      }
       if (result.hasFollowUp && result.followUpQuestionId && result.followUpQuestionText) {
         setFollowUpQuestion({ id: result.followUpQuestionId, text: result.followUpQuestionText })
       } else {
@@ -429,21 +481,6 @@ function LiveInterviewScreen({
     handleNextQuestion()
   }
 
-  // ear(Eye Aspect Ratio) 0.2~0.4 범위를 0~100으로 매핑 → 표정 자연스러움 근사
-  const expressionScore = faceDetected ? Math.min(100, Math.round(Math.max(0, (ear - 0.15) / 0.25) * 100)) : 0
-  const visionMetrics = [
-    { label: "시선 안정성", value: Math.round(gazeRatio) },
-    { label: "표정 자연스러움", value: expressionScore },
-    { label: "자세 안정성", value: faceDetected ? Math.round(gazeRatio * 0.9) : 0 },
-    { label: "깜빡임 횟수", value: blinkCount },
-  ]
-
-  const verbalMetrics = [
-    { label: "답변 구조", value: verbalScores.structure },
-    { label: "논리적 흐름", value: verbalScores.logic },
-    { label: "구체성", value: verbalScores.specificity },
-    { label: "직무 적합도", value: verbalScores.jobFit },
-  ]
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -473,38 +510,59 @@ function LiveInterviewScreen({
 
       {/* Main Grid */}
       <main className="flex flex-1 gap-3 overflow-hidden p-3">
-        {/* Left Column: Vision Analysis */}
+        {/* Left Column: 통합 분석 패널 */}
         {mode === "practice" && (
           <div className="hidden w-56 shrink-0 flex-col gap-3 xl:flex">
-            <AnalysisPanel title="Vision Analysis">
-              <div className="mb-4 flex justify-center">
+            <AnalysisPanel title="실시간 분석">
+              <div className="mb-3 flex justify-center">
                 <div className="relative h-20 w-20 overflow-hidden rounded-lg border border-border bg-background">
                   {stream ? (
-                    <video
-                      autoPlay
-                      playsInline
-                      muted
-                      className="h-full w-full object-cover"
-                      ref={(el) => { if (el && stream) el.srcObject = stream }}
-                    />
+                    <video autoPlay playsInline muted className="h-full w-full object-cover"
+                      ref={(el) => { if (el && stream) el.srcObject = stream }} />
                   ) : (
                     <User className="absolute inset-0 m-auto h-10 w-10 text-muted-foreground/30" />
                   )}
                   <div className="absolute inset-1 rounded-md border border-dashed border-primary/30" />
                 </div>
               </div>
-              <div className="space-y-3">
-                {visionMetrics.map((m) => (
-                  <div key={m.label}>
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{m.label}</span>
-                      <span className="text-xs font-semibold text-foreground">{m.value}</span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${m.value}%` }} />
-                    </div>
+
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">음성</div>
+              <div className="mb-3 grid grid-cols-3 gap-1.5">
+                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                  <div className="text-sm font-bold text-foreground">{wpm > 0 ? Math.round(wpm) : "--"}</div>
+                  <div className="text-[9px] text-muted-foreground">WPM</div>
+                </div>
+                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                  <div className="text-sm font-bold text-foreground">{silenceSec > 0 ? silenceSec.toFixed(1) : "--"}</div>
+                  <div className="text-[9px] text-muted-foreground">침묵(초)</div>
+                </div>
+                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                  <div className="text-sm font-bold text-foreground">{totalFillerCount > 0 ? totalFillerCount : "--"}</div>
+                  <div className="text-[9px] text-muted-foreground">필러워드</div>
+                </div>
+              </div>
+
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">영상</div>
+              <div className="space-y-2">
+                <div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">시선 고정률</span>
+                    <span className="text-xs font-semibold text-foreground">{Math.round(gazeRatio)}%</span>
                   </div>
-                ))}
+                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${gazeRatio}%` }} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                    <div className="text-sm font-bold text-foreground">{gazeOffCount}</div>
+                    <div className="text-[9px] text-muted-foreground">시선이탈</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                    <div className="text-sm font-bold text-foreground">{blinkCount}</div>
+                    <div className="text-[9px] text-muted-foreground">깜빡임</div>
+                  </div>
+                </div>
               </div>
             </AnalysisPanel>
           </div>
@@ -565,6 +623,14 @@ function LiveInterviewScreen({
                   <div className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
                   <span className="text-xs font-medium text-foreground">REC</span>
                 </div>
+                {mode === "practice" && (sttFeedback || faceFeedback) && (
+                  <div className="absolute left-3 right-3 top-12 z-10 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-center gap-2 rounded-lg bg-amber-500/90 px-3 py-2 shadow backdrop-blur-sm">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-white" />
+                      <span className="text-xs font-medium text-white">{sttFeedback || faceFeedback}</span>
+                    </div>
+                  </div>
+                )}
                 {answerState === "answering" && (
                   <div className="absolute bottom-3 left-3 right-3">
                     <div className="flex items-center gap-2 rounded-lg bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
@@ -577,11 +643,6 @@ function LiveInterviewScreen({
                 )}
               </div>
             </div>
-            {(sttFeedback || faceFeedback) && (
-              <div className="mx-3 mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                {sttFeedback || faceFeedback}
-              </div>
-            )}
           </div>
 
           {/* Question + Timer */}
@@ -601,10 +662,10 @@ function LiveInterviewScreen({
                 </p>
               </div>
               <div className="flex flex-col items-center gap-1 rounded-lg border border-border bg-background px-4 py-2">
-                <span className={cn("font-mono text-2xl font-bold", answerState === "answering" ? "text-primary" : "text-muted-foreground")}>
-                  {formatTime(answerTime)}
+                <span className={cn("font-mono text-2xl font-bold", answerState === "answering" ? (questionTimeLimit - answerTime <= 30 ? "text-destructive" : "text-primary") : "text-muted-foreground")}>
+                  {formatTime(Math.max(0, questionTimeLimit - answerTime))}
                 </span>
-                <span className="font-mono text-xs text-muted-foreground">/ {formatTime(questionTimeLimit)}</span>
+                <span className="font-mono text-xs text-muted-foreground">남은 시간</span>
               </div>
             </div>
 
@@ -643,46 +704,6 @@ function LiveInterviewScreen({
           </div>
         </div>
 
-        {/* Right Column: Verbal + Voice Analysis */}
-        {mode === "practice" && (
-          <div className="hidden w-56 shrink-0 flex-col gap-3 xl:flex">
-            <AnalysisPanel title="Verbal Analysis">
-              <div className="space-y-3">
-                {verbalMetrics.map((m) => (
-                  <div key={m.label}>
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{m.label}</span>
-                      <span className="text-xs font-semibold text-foreground">{m.value}</span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${m.value}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </AnalysisPanel>
-            <AnalysisPanel title="Voice Analysis">
-              <div className="space-y-3">
-                <div className="flex h-10 items-end gap-0.5">
-                  {Array.from({ length: 24 }).map((_, i) => (
-                    <div key={i} className="w-1 rounded-full bg-primary transition-all duration-150"
-                      style={{ height: `${answerState === "answering" ? (Math.sin((i / 24) * Math.PI) * 60 + 20 + Math.random() * 20) : 15}%`, opacity: answerState === "answering" ? 0.6 : 0.15 }} />
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-border bg-background p-2 text-center">
-                    <div className="text-lg font-bold text-foreground">{wpm > 0 ? Math.round(wpm) : "--"}</div>
-                    <div className="text-[10px] text-muted-foreground">WPM</div>
-                  </div>
-                  <div className="rounded-lg border border-border bg-background p-2 text-center">
-                    <div className="text-lg font-bold text-foreground">{fillerCount > 0 ? fillerCount : "--"}</div>
-                    <div className="text-[10px] text-muted-foreground">필러워드</div>
-                  </div>
-                </div>
-              </div>
-            </AnalysisPanel>
-          </div>
-        )}
       </main>
     </div>
   )
@@ -917,7 +938,7 @@ function InterviewPageInner() {
 
   const handleInterviewEnd = () => {
     if (sessionIdParam) {
-      router.push(`/reports?session=${sessionIdParam}`)
+      router.push(`/reports/interview/${sessionIdParam}`)
     } else {
       router.push("/reports")
     }

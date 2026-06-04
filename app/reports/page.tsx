@@ -6,22 +6,26 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { MobileHeader } from "@/components/dashboard/mobile-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ChevronLeft, ChevronDown, Search, X, RotateCcw, BarChart2, Loader2 } from "lucide-react"
+import { ChevronDown, Search, X, Loader2 } from "lucide-react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faBrain, faChartLine, faStar, faArrowTrendUp, faLightbulb } from "@fortawesome/free-solid-svg-icons"
+import { faBrain, faLightbulb } from "@fortawesome/free-solid-svg-icons"
 import { cn } from "@/lib/utils"
 import { getReportList, getInterviewReport, getDebateReport, type ReportListItem } from "@/lib/api/reports"
+import { DebateReportView } from "@/components/reports/DebateReportView"
+import { InterviewReportView } from "@/components/reports/InterviewReportView"
 import { getWorstClip } from "@/lib/api/interview"
 import type { InterviewReportResponse, DebateReportResponse } from "@/types/report"
 
 function ScoreRing({ score, size = 64 }: { score: number; size?: number }) {
   const radius = (size - 8) / 2
+  const safeScore = typeof score === "number" && !isNaN(score) ? score : 0
   const circumference = 2 * Math.PI * radius
-  const offset = circumference - (score / 100) * circumference
-  const color = score >= 80 ? "#6B9E7E" : score >= 60 ? "#C4A24E" : "#C45C5C"
+  const offset = circumference - (safeScore / 100) * circumference
+  const color = safeScore >= 80 ? "#6B9E7E" : safeScore >= 60 ? "#C4A24E" : "#C45C5C"
+  const displayScore = Number.isInteger(safeScore) ? safeScore : safeScore.toFixed(1)
 
   return (
-    <div className="relative" style={{ width: size, height: size }}>
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle
           cx={size / 2} cy={size / 2} r={radius}
@@ -37,29 +41,13 @@ function ScoreRing({ score, size = 64 }: { score: number; size?: number }) {
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-lg font-bold" style={{ color }}>{score}</span>
+        <span className="font-bold leading-none" style={{ color, fontSize: size * 0.28 }}>{displayScore}</span>
       </div>
     </div>
   )
 }
 
-function SkillBar({ label, value, delay = 0 }: { label: string; value: number; delay?: number }) {
-  const color = value >= 85 ? "bg-emerald-500" : value >= 75 ? "bg-amber-500" : "bg-red-400"
-  return (
-    <div className="group">
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">{label}</span>
-        <span className="text-xs font-bold text-foreground">{value}</span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-muted/50">
-        <div
-          className={cn("h-full rounded-full transition-all duration-700", color)}
-          style={{ width: `${value}%`, transitionDelay: `${delay}ms` }}
-        />
-      </div>
-    </div>
-  )
-}
+
 
 export default function ReportsPage() {
   const [reports, setReports] = useState<ReportListItem[]>([])
@@ -154,8 +142,8 @@ export default function ReportsPage() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               { label: "총 면접", value: reports.length },
-              { label: "평균 점수", value: reports.length > 0 ? Math.round(reports.reduce((s, r) => s + r.totalScore, 0) / reports.length) : "--" },
-              { label: "최고 점수", value: reports.length > 0 ? Math.max(...reports.map(r => r.totalScore)) : "--" },
+              { label: "평균 점수", value: reports.length > 0 ? (reports.reduce((s, r) => s + r.totalScore, 0) / reports.length).toFixed(1) : "--" },
+              { label: "최고 점수", value: reports.length > 0 ? Math.max(...reports.map(r => r.totalScore)).toFixed(1) : "--" },
               { label: "분석 완료", value: reports.filter(r => r.totalScore > 0).length },
             ].map((stat) => (
               <div key={stat.label} className="rounded-xl border border-border bg-white p-4 card-hover">
@@ -218,7 +206,7 @@ export default function ReportsPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {reports.map((report, idx) => (
+              {reports.map((report) => (
                 <div
                   key={report.domainId}
                   className={cn(
@@ -281,131 +269,9 @@ export default function ReportsPage() {
                           </div>
                         </div>
                       ) : expandedDebateReport ? (
-                        <div className="space-y-6">
-                          {/* Overall */}
-                          <div className="rounded-xl bg-gradient-to-br from-primary/5 to-accent/5 p-4">
-                            <h4 className="mb-2 text-sm font-semibold text-foreground flex items-center gap-2">
-                              <FontAwesomeIcon icon={faLightbulb} className="h-3.5 w-3.5 text-amber-500" />
-                              종합 평가
-                            </h4>
-                            <p className="text-sm leading-relaxed text-muted-foreground">{expandedDebateReport.overall}</p>
-                          </div>
-
-                          {/* Turn Feedback */}
-                          {expandedDebateReport.turnFeedback.length > 0 && (
-                            <div className="space-y-3">
-                              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                                <FontAwesomeIcon icon={faChartLine} className="h-3.5 w-3.5 text-primary" />
-                                라운드별 피드백
-                              </h4>
-                              {expandedDebateReport.turnFeedback.map((tf, i) => (
-                                <div key={i} className="rounded-lg border border-border/50 p-3">
-                                  <div className="flex items-center justify-between mb-1.5">
-                                    <Badge variant="outline" className="text-xs">{tf.roundType}</Badge>
-                                    <span className="text-xs font-bold text-foreground">{tf.weightedScore}점</span>
-                                  </div>
-                                  <p className="text-xs text-muted-foreground">{tf.feedback}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Strategy Analysis */}
-                          {expandedDebateReport.strategyAnalysis && (
-                            <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-blue-600 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faBrain} className="h-3.5 w-3.5" />
-                                전략 분석
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{expandedDebateReport.strategyAnalysis}</p>
-                            </div>
-                          )}
-
-                          {/* Strengths & Improvements */}
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-emerald-600 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
-                                강점
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{expandedDebateReport.strengths}</p>
-                            </div>
-                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-amber-600 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faArrowTrendUp} className="h-3.5 w-3.5" />
-                                개선점
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{expandedDebateReport.improvements}</p>
-                            </div>
-                          </div>
-
-                          {/* Final Advice */}
-                          {expandedDebateReport.finalAdvice && (
-                            <div className="rounded-xl bg-muted/30 p-4">
-                              <p className="text-sm text-muted-foreground">{expandedDebateReport.finalAdvice}</p>
-                            </div>
-                          )}
-                        </div>
+                        <DebateReportView report={expandedDebateReport} />
                       ) : expandedReport ? (
-                        <div className="space-y-6">
-                          {/* Overall & Scores */}
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="rounded-xl bg-gradient-to-br from-primary/5 to-accent/5 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-foreground flex items-center gap-2">
-                                <FontAwesomeIcon icon={faLightbulb} className="h-3.5 w-3.5 text-amber-500" />
-                                종합 평가
-                              </h4>
-                              <p className="text-sm leading-relaxed text-muted-foreground">{expandedReport.overall}</p>
-                            </div>
-                            <div className="space-y-3">
-                              {expandedReport.itemAverages && Object.entries(expandedReport.itemAverages).map(([key, val], i) => (
-                                <SkillBar key={key} label={key} value={val as number} delay={i * 100} />
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Strengths & Improvements */}
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-emerald-600 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
-                                강점
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{expandedReport.strengths}</p>
-                            </div>
-                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-amber-600 flex items-center gap-2">
-                                <FontAwesomeIcon icon={faArrowTrendUp} className="h-3.5 w-3.5" />
-                                개선점
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{expandedReport.improvements}</p>
-                            </div>
-                          </div>
-
-                          {/* Worst Clip */}
-                          {worstClipUrl && (
-                            <div className="rounded-xl border border-border/50 p-4">
-                              <h4 className="mb-2 text-sm font-semibold text-foreground">개선 필요 구간</h4>
-                              <video
-                                src={worstClipUrl}
-                                controls
-                                className="w-full rounded-lg"
-                              />
-                            </div>
-                          )}
-
-                          {/* Actions */}
-                          <div className="flex gap-2 pt-2">
-                            <Button size="sm" variant="outline" className="text-xs gap-1.5">
-                              <RotateCcw className="h-3 w-3" />
-                              재연습
-                            </Button>
-                            <Button size="sm" variant="outline" className="text-xs gap-1.5">
-                              <BarChart2 className="h-3 w-3" />
-                              상세 분석
-                            </Button>
-                          </div>
-                        </div>
+                        <InterviewReportView report={expandedReport} worstClipUrl={worstClipUrl} />
                       ) : null}
                     </div>
                   )}

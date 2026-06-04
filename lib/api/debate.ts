@@ -1,4 +1,4 @@
-import { apiFetch, getAuthHeaders } from "./client"
+import { apiFetch } from "./client"
 
 export interface DebateTopic {
   id: number
@@ -25,17 +25,80 @@ export interface DebateSessionCreateResponse {
   sessionId: number
 }
 
+export type SpeakerType = "USER" | "AI_COMPETITOR" | "AI_INTERVIEWER"
+export type DebateRound = "OPENING" | "REBUTTAL_1" | "REBUTTAL_2" | "CLOSING" | "MODERATION"
+
+export interface DebateTurn {
+  id: number
+  speakerType: SpeakerType
+  round: DebateRound
+  stance: string
+  content: string
+  audioUrl: string | null
+  createdAt: string
+}
+
 export interface DebateStateResponse {
   sessionId: number
   currentState: string
-  isWaitingForUser: boolean
+  waitingForUser: boolean
   version: number
-  latestTurns: {
-    speaker: string
-    content: string
-    round: string
-    stance: string
-  }[]
+  latestTurns: DebateTurn[]
+}
+
+export interface SuggestedTopicCandidate {
+  title: string
+  description: string
+  category: string
+}
+
+export interface SuggestTopicsResponse {
+  candidates: SuggestedTopicCandidate[]
+  newsCount: number
+}
+
+/**
+ * 최신 뉴스 기반 토론 주제 후보 추천 (AI 서버 + 크롤링).
+ * 수 초 걸릴 수 있어 공통 클라이언트와 별개로 자체 타임아웃을 둔다.
+ */
+export async function suggestDebateTopics(data: {
+  keywords?: string[]
+  count?: number
+}): Promise<SuggestTopicsResponse> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 120_000)
+  try {
+    return await apiFetch<SuggestTopicsResponse>(
+      "/debate/topics/suggest",
+      { method: "POST", body: JSON.stringify(data), signal: controller.signal },
+      "토론 주제 추천에 실패했습니다"
+    )
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * 선택한 후보로 실제 토론 주제 생성 + 저장 → topicId(=id) 발급 (HTTP 201).
+ * 뉴스 크롤링/생성이라 수십 초 걸릴 수 있음. 백엔드 타임아웃 180초보다 살짝 길게 잡아
+ * 백엔드 응답(성공/에러 envelope)이 먼저 도착하게 한다.
+ */
+export async function generateDebateTopic(data: {
+  title: string
+  description?: string
+  category: string
+}): Promise<DebateTopic> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 190_000)
+  try {
+    return await apiFetch<DebateTopic>(
+      "/debate/topics/generate",
+      { method: "POST", body: JSON.stringify(data), signal: controller.signal },
+      "토론 주제 생성에 실패했습니다"
+    )
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function getDebateTopics(category?: string): Promise<DebateTopic[]> {
@@ -69,13 +132,11 @@ export async function createDebateSession(data: {
 }
 
 export async function startDebateSession(sessionId: number): Promise<void> {
-  const response = await fetch(`/debate/${sessionId}/start`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-  })
-  if (!response.ok) {
-    throw new Error("토론 시작에 실패했습니다")
-  }
+  return apiFetch<void>(
+    `/debate/${sessionId}/start`,
+    { method: "POST" },
+    "토론 시작에 실패했습니다"
+  )
 }
 
 export async function getDebateState(sessionId: number): Promise<DebateStateResponse> {
@@ -86,23 +147,18 @@ export async function getDebateState(sessionId: number): Promise<DebateStateResp
   )
 }
 
-export async function submitDebateTurn(sessionId: number, content: string): Promise<void> {
-  const response = await fetch(`/debate/${sessionId}/turn`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ content }),
-  })
-  if (!response.ok) {
-    throw new Error("토론 턴 제출에 실패했습니다")
-  }
+export async function submitDebateTurn(sessionId: number): Promise<void> {
+  return apiFetch<void>(
+    `/debate/${sessionId}/turn`,
+    { method: "POST" },
+    "토론 턴 제출에 실패했습니다"
+  )
 }
 
 export async function endDebateSession(sessionId: number): Promise<void> {
-  const response = await fetch(`/debate/${sessionId}/end`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-  })
-  if (!response.ok && response.status !== 202) {
-    throw new Error("토론 종료에 실패했습니다")
-  }
+  return apiFetch<void>(
+    `/debate/${sessionId}/end`,
+    { method: "POST" },
+    "토론 종료에 실패했습니다"
+  )
 }
