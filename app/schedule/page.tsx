@@ -134,11 +134,12 @@ export default function SchedulePage() {
   const fetchModalData = useCallback(async () => {
     setLoadingModalData(true)
     try {
-      const [unscheduled, allScheds] = await Promise.all([
-        getSelfIntroList("unscheduled").catch(() => []),
+      const [allIntros, allScheds] = await Promise.all([
+        getSelfIntroList().catch(() => []),
         getScheduleList().catch(() => []),
       ])
-      setUnscheduledIntros(unscheduled)
+      const linkedIds = new Set(allScheds.map(s => s.selfIntroId).filter((id): id is number => id !== null))
+      setUnscheduledIntros(allIntros.filter(intro => !linkedIds.has(intro.id)))
       setModalSchedules(allScheds)
     } finally {
       setLoadingModalData(false)
@@ -844,8 +845,8 @@ export default function SchedulePage() {
                             setSchedulingIntroId(null)
                           } else {
                             setSchedulingIntroId(intro.id)
-                            setScheduleInputDate("")
-                            setScheduleInputTime("")
+                            setScheduleInputDate(intro.interviewDate ?? "")
+                            setScheduleInputTime(intro.interviewTime ?? "")
                           }
                         }}
                       >

@@ -2,6 +2,7 @@ export type ScheduleStatus = "SCHEDULED" | "COMPLETED" | "CANCELLED"
 
 export interface Schedule {
   id: number
+  selfIntroId: number | null
   title: string
   companyName: string
   jobPosition: string
