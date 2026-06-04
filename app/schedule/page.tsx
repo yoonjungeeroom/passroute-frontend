@@ -134,11 +134,12 @@ export default function SchedulePage() {
   const fetchModalData = useCallback(async () => {
     setLoadingModalData(true)
     try {
-      const [unscheduled, allScheds] = await Promise.all([
-        getSelfIntroList("unscheduled").catch(() => []),
+      const [allIntros, allScheds] = await Promise.all([
+        getSelfIntroList().catch(() => []),
         getScheduleList().catch(() => []),
       ])
-      setUnscheduledIntros(unscheduled)
+      const linkedIds = new Set(allScheds.map(s => s.selfIntroId).filter((id): id is number => id !== null))
+      setUnscheduledIntros(allIntros.filter(intro => !linkedIds.has(intro.id)))
       setModalSchedules(allScheds)
     } finally {
       setLoadingModalData(false)
@@ -396,7 +397,7 @@ export default function SchedulePage() {
               className="gap-1.5 bg-primary text-white hover:bg-primary/90"
             >
               <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">일정 추가</span>
+              <span className="hidden sm:inline">일정 관리</span>
             </Button>
           </div>
         </div>
@@ -760,7 +761,7 @@ export default function SchedulePage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
               <Plus className="h-5 w-5 text-primary" />
-              일정 추가
+              일정 관리
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
               일정이 미정인 자기소개서를 선택하거나 새 일정을 등록하세요.
@@ -844,8 +845,8 @@ export default function SchedulePage() {
                             setSchedulingIntroId(null)
                           } else {
                             setSchedulingIntroId(intro.id)
-                            setScheduleInputDate("")
-                            setScheduleInputTime("")
+                            setScheduleInputDate(intro.interviewDate ?? "")
+                            setScheduleInputTime(intro.interviewTime ?? "")
                           }
                         }}
                       >
