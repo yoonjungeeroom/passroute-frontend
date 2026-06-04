@@ -7,7 +7,6 @@ import {
   faEye,
   faListCheck,
   faTriangleExclamation,
-  faCircleQuestion,
   faClipboardCheck,
 } from "@fortawesome/free-solid-svg-icons"
 import { cn } from "@/lib/utils"
@@ -30,7 +29,7 @@ function MetricCard({ label, value, unit }: { label: string; value: string | num
 }
 
 export function InterviewReportDetail({ report }: { report: InterviewReportResponse }) {
-  const { voiceAnalysis, faceAnalysis, questionFeedback, weaknesses, keyWeakness, recommendedQuestions, finalAdvice, readinessComment } = report
+  const { voiceAnalysis, faceAnalysis, questionFeedback, weaknesses, keyWeakness, finalAdvice, readinessComment } = report
 
   return (
     <div className="space-y-6">
@@ -43,18 +42,18 @@ export function InterviewReportDetail({ report }: { report: InterviewReportRespo
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className={cn("grid gap-4", voiceAnalysis && faceAnalysis && "sm:grid-cols-2")}>
           {voiceAnalysis && (
             <div className="rounded-xl border border-border p-4">
               <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
                 <FontAwesomeIcon icon={faMicrophone} className="h-3.5 w-3.5 text-primary" />
                 음성 분석
-                <span className="ml-auto text-xs font-normal text-muted-foreground">{voiceAnalysis.voiceScore}점</span>
+                <span className="ml-auto text-xs font-normal text-muted-foreground">{voiceAnalysis.voiceScore ?? "-"}점</span>
               </h4>
               <div className="grid grid-cols-3 gap-2">
-                <MetricCard label="말하기 속도" value={Math.round(voiceAnalysis.avgWpm)} unit="wpm" />
-                <MetricCard label="평균 침묵" value={voiceAnalysis.avgSilenceDuration.toFixed(1)} unit="초" />
-                <MetricCard label="간투어" value={voiceAnalysis.fillerCount} unit="회" />
+                <MetricCard label="말하기 속도" value={voiceAnalysis.avgWpm != null ? Math.round(voiceAnalysis.avgWpm) : "-"} unit="wpm" />
+                <MetricCard label="평균 침묵" value={voiceAnalysis.avgSilenceDuration != null ? voiceAnalysis.avgSilenceDuration.toFixed(1) : "-"} unit="초" />
+                <MetricCard label="간투어" value={voiceAnalysis.fillerCount ?? "-"} unit="회" />
               </div>
             </div>
           )}
@@ -63,12 +62,12 @@ export function InterviewReportDetail({ report }: { report: InterviewReportRespo
               <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
                 <FontAwesomeIcon icon={faEye} className="h-3.5 w-3.5 text-accent" />
                 표정 분석
-                <span className="ml-auto text-xs font-normal text-muted-foreground">{faceAnalysis.faceScore}점</span>
+                <span className="ml-auto text-xs font-normal text-muted-foreground">{faceAnalysis.faceScore ?? "-"}점</span>
               </h4>
               <div className="grid grid-cols-3 gap-2">
-                <MetricCard label="시선 집중" value={`${Math.round(faceAnalysis.avgGazeRatio * 100)}`} unit="%" />
-                <MetricCard label="시선 이탈" value={faceAnalysis.gazeOffCount} unit="회" />
-                <MetricCard label="분당 깜빡임" value={Math.round(faceAnalysis.avgBlinkPerMin)} unit="회" />
+                <MetricCard label="시선 집중" value={faceAnalysis.avgGazeRatio != null ? String(Math.round(faceAnalysis.avgGazeRatio * 100)) : "-"} unit="%" />
+                <MetricCard label="시선 이탈" value={faceAnalysis.gazeOffCount ?? "-"} unit="회" />
+                <MetricCard label="분당 깜빡임" value={faceAnalysis.avgBlinkPerMin != null ? Math.round(faceAnalysis.avgBlinkPerMin) : "-"} unit="회" />
               </div>
             </div>
           )}
@@ -108,7 +107,7 @@ export function InterviewReportDetail({ report }: { report: InterviewReportRespo
                   </div>
                   <div className="shrink-0 text-center">
                     <div className={cn("text-3xl font-bold leading-none", scoreColor(q.percentage))}>
-                      {Math.round(q.percentage)}
+                      {q.percentage != null ? Math.round(q.percentage) : "-"}
                     </div>
                     <div className="mt-1 text-[11px] text-muted-foreground">/ 100점</div>
                   </div>
@@ -143,26 +142,6 @@ export function InterviewReportDetail({ report }: { report: InterviewReportRespo
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {/* 추천 예상 질문 */}
-      {recommendedQuestions?.length > 0 && (
-        <div className="rounded-xl border border-border p-4">
-          <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-            <FontAwesomeIcon icon={faCircleQuestion} className="h-3.5 w-3.5 text-accent" />
-            추천 예상 질문
-          </h4>
-          <ul className="space-y-2">
-            {recommendedQuestions.map((q, i) => (
-              <li key={i} className="flex items-start gap-2.5 rounded-lg bg-muted/30 px-3 py-2.5 text-sm">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-[11px] font-semibold text-accent">
-                  {i + 1}
-                </span>
-                <span className="text-muted-foreground">{q}</span>
-              </li>
-            ))}
-          </ul>
         </div>
       )}
 
