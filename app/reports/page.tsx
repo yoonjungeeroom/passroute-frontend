@@ -121,9 +121,10 @@ export default function ReportsPage() {
       return [{ label: "토론", style: "border-accent/30 bg-accent/10 text-accent" }]
     }
     const badges = [{ label: "1:1", style: "border-primary/30 bg-primary/10 text-primary" }]
-    if (report.interviewType === "technical") {
+    const interviewType = report.interviewType?.toLowerCase()
+    if (interviewType === "technical") {
       badges.push({ label: "기술", style: "border-sky-500/30 bg-sky-500/10 text-sky-600" })
-    } else if (report.interviewType === "personality") {
+    } else if (interviewType === "personality") {
       badges.push({ label: "인성", style: "border-violet-500/30 bg-violet-500/10 text-violet-600" })
     }
     return badges
@@ -232,13 +233,13 @@ export default function ReportsPage() {
                   >
                     {/* Company Initial */}
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-sm font-semibold text-muted-foreground shrink-0">
-                      {(report.companyName ?? report.jobPosition ?? "토론").slice(0, 1)}
+                      {(report.companyName || report.jobPosition || "토론").slice(0, 1)}
                     </div>
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-foreground">{report.companyName ?? report.jobPosition ?? "토론"}</span>
+                        <span className="font-semibold text-foreground">{report.companyName || report.jobPosition || "토론"}</span>
                         {getBadges(report).map((b) => (
                           <Badge key={b.label} variant="outline" className={cn("text-[10px] font-medium", b.style)}>
                             {b.label}
