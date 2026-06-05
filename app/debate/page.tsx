@@ -268,9 +268,10 @@ function DebatePageInner() {
     if (prepRemaining <= 0) {
       if (startedRef.current || !sessionId) return
       startedRef.current = true
+      // start 성공 시에만 진입. 실패하면 폴링·발화 제출이 모두 깨지므로 대시보드로 복귀.
       startDebateSession(sessionId)
-        .catch(() => {}) // start 실패해도 토론 화면으로 진입은 시킨다
-        .finally(() => setPhase("debating"))
+        .then(() => setPhase("debating"))
+        .catch(() => router.replace("/dashboard"))
       return
     }
     const timer = setTimeout(() => setPrepRemaining((s) => s - 1), 1000)
@@ -441,18 +442,18 @@ function DebatePageInner() {
         if (cancelled) return
         setDebateState(state)
         const round = STATE_TO_ROUND[state.currentState] ?? null
-        const evaluated = [...state.latestTurns]
+        // 가장 최근 사용자 턴만 후보로 본다. 그 턴이 아직 평가 전이면 계속 대기 —
+        // 이렇게 해야 3회차 이상 재시도 시 옛 시도의 평가를 잘못 매칭하지 않는다.
+        const latestUserTurn = [...state.latestTurns]
           .reverse()
-          .find(
-            (t) =>
-              t.speakerType === "USER" &&
-              t.round === round &&
-              t.weightedScore != null &&
-              t.id !== prevEvalTurnIdRef.current
-          )
-        if (evaluated) {
-          shownEvalIdRef.current = evaluated.id
-          setFeedbackTurn(evaluated)
+          .find((t) => t.speakerType === "USER" && t.round === round)
+        if (
+          latestUserTurn &&
+          latestUserTurn.weightedScore != null &&
+          latestUserTurn.id !== prevEvalTurnIdRef.current
+        ) {
+          shownEvalIdRef.current = latestUserTurn.id
+          setFeedbackTurn(latestUserTurn)
           setAwaitingEval(false)
           return
         }
