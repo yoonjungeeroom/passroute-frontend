@@ -21,6 +21,7 @@ import {
   ArrowRight,
   AlertCircle,
   User,
+  Clock,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -41,6 +42,7 @@ import {
   type DebateTopic,
   type DebatePersona,
   type DebateStateResponse,
+  type DebateTurn,
   type DebateRound,
 } from "@/lib/api/debate"
 import { useDebateSTT } from "@/hooks/use-debate-stt"
@@ -60,7 +62,7 @@ const roundLabel: Record<DebateRound, string> = {
   MODERATION: "사회",
 }
 
-type Phase = "precheck" | "debating" | "ending"
+type Phase = "precheck" | "prep" | "debating" | "ending"
 
 function DebatePageInner() {
   const router = useRouter()
@@ -70,6 +72,9 @@ function DebatePageInner() {
   const personaIdParam = searchParams?.get("personaId")
   const difficultyParam = searchParams?.get("difficulty") as "EASY" | "NORMAL" | "HARD" | null
   const topicTitleParam = searchParams?.get("topicTitle") // 생성 주제는 정적 목록에 없어 배너 제목 폴백용
+  // 연습/실전 모드. modal이 "practice" | "real"로 전달 (real = 실전/EXAM). 누락 시 연습으로 간주.
+  const isExam = searchParams?.get("mode") === "real"
+  const isPractice = !isExam
 
   // 쿼리스트링을 한 번만 안전하게 파싱 (누락/비숫자는 NaN, 잘못된 stance는 false)
   const topicId = topicIdParam ? Number(topicIdParam) : NaN
@@ -101,6 +106,15 @@ function DebatePageInner() {
   const [submitting, setSubmitting] = useState(false)
   const [polling, setPolling] = useState(false)
   const [pollTrigger, setPollTrigger] = useState(0)
+  // 실전 모드 준비시간 카운트다운 (precheck → prep → debating)
+  const [prepSeconds, setPrepSeconds] = useState(60)
+  const [prepRemaining, setPrepRemaining] = useState(0)
+  const startedRef = useRef(false) // startDebateSession 중복 호출 방지
+  // PRACTICE 즉시 피드백 / 재시도 (commit=false 시도 → 평가 노출 → 다시 말하기/확정)
+  const [feedbackTurn, setFeedbackTurn] = useState<DebateTurn | null>(null)
+  const [awaitingEval, setAwaitingEval] = useState(false)
+  const prevEvalTurnIdRef = useRef<number | null>(null) // 재시도 폴링에서 무시할 직전 평가 턴 id
+  const shownEvalIdRef = useRef<number | null>(null) // 마지막으로 노출한 평가 턴 id
   const chatEndRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const playedTurnIds = useRef<Set<number>>(new Set())
@@ -221,21 +235,47 @@ function DebatePageInner() {
     audioRef.current.play().then(() => audioRef.current?.pause()).catch(() => {})
     setCreating(true)
     try {
-      const { sessionId: sid } = await createDebateSession({
+      const res = await createDebateSession({
         topicId,
         userStance: stanceParam,
         personaId,
         difficulty: selectedDifficulty,
+        mode: isExam ? "real" : "practice",
       })
-      setSessionId(sid)
-      await startDebateSession(sid)
-      setPhase("debating")
+      setSessionId(res.sessionId)
+      if (isExam) {
+        // 실전: 준비시간 카운트다운 후 토론 시작 (start는 prep 종료 시 호출)
+        const secs = res.prepSeconds ?? 60
+        setPrepSeconds(secs)
+        setPrepRemaining(secs)
+        setPhase("prep")
+      } else {
+        // 연습: 준비시간 없이 바로 시작
+        startedRef.current = true
+        await startDebateSession(res.sessionId)
+        setPhase("debating")
+      }
     } catch {
       // 세션 생성 실패
     } finally {
       setCreating(false)
     }
   }
+
+  // 실전 모드 준비시간 카운트다운 — 0이 되면 토론 시작
+  useEffect(() => {
+    if (phase !== "prep") return
+    if (prepRemaining <= 0) {
+      if (startedRef.current || !sessionId) return
+      startedRef.current = true
+      startDebateSession(sessionId)
+        .catch(() => {}) // start 실패해도 토론 화면으로 진입은 시킨다
+        .finally(() => setPhase("debating"))
+      return
+    }
+    const timer = setTimeout(() => setPrepRemaining((s) => s - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [phase, prepRemaining, sessionId])
 
   // 사전점검 — 카메라+마이크 획득 및 디바이스 체크
   useEffect(() => {
@@ -351,20 +391,84 @@ function DebatePageInner() {
     return () => clearTimeout(timer)
   }, [recording, sttTranscript])
 
-  const handleSubmitTurn = async () => {
-    if (!sessionId || submitting || !sttReady) return
+  // 확정 제출 — REAL은 즉시 lock, PRACTICE는 평가 패널에서 "확정" 시. commit=true → AI 진행.
+  const handleCommit = async () => {
+    if (!sessionId || submitting) return
     setSubmitting(true)
     try {
-      await submitDebateTurn(sessionId)
+      await submitDebateTurn(sessionId, true)
       setSttReady(false)
       setRecording(false)
-      setPollTrigger(prev => prev + 1)
+      setFeedbackTurn(null)
+      setAwaitingEval(false)
+      prevEvalTurnIdRef.current = null
+      shownEvalIdRef.current = null
+      setPollTrigger(prev => prev + 1) // 폴링 재개 → AI 응답 대기
     } catch {
       // keep state on error
     } finally {
       setSubmitting(false)
     }
   }
+
+  // 시도 제출 (PRACTICE 전용) — commit=false. 평가만 받고 라운드는 유지, 평가 도착을 폴링한다.
+  const handleAttempt = async () => {
+    if (!sessionId || submitting || !sttReady) return
+    setSubmitting(true)
+    try {
+      prevEvalTurnIdRef.current = shownEvalIdRef.current // 직전에 노출한 평가 턴은 무시 (재시도 교체 대비)
+      await submitDebateTurn(sessionId, false)
+      setSttReady(false)
+      setRecording(false)
+      setFeedbackTurn(null)
+      setAwaitingEval(true) // 평가 도착 폴링 시작
+    } catch {
+      // keep state on error
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // PRACTICE: 시도 제출 후 평가(weightedScore) 도착을 폴링 → 피드백 패널 노출
+  useEffect(() => {
+    if (!awaitingEval || !sessionId) return
+    let cancelled = false
+    let tries = 0
+    async function pollEval() {
+      if (cancelled || !sessionId) return
+      try {
+        const state = await getDebateState(sessionId)
+        if (cancelled) return
+        setDebateState(state)
+        const round = STATE_TO_ROUND[state.currentState] ?? null
+        const evaluated = [...state.latestTurns]
+          .reverse()
+          .find(
+            (t) =>
+              t.speakerType === "USER" &&
+              t.round === round &&
+              t.weightedScore != null &&
+              t.id !== prevEvalTurnIdRef.current
+          )
+        if (evaluated) {
+          shownEvalIdRef.current = evaluated.id
+          setFeedbackTurn(evaluated)
+          setAwaitingEval(false)
+          return
+        }
+      } catch {
+        // 일시 오류는 재시도로 흡수
+      }
+      tries++
+      if (tries > 40) { // 약 60초 후 폴백 — 평가 못 받아도 진행 막지 않음
+        setAwaitingEval(false)
+        return
+      }
+      setTimeout(pollEval, 1500)
+    }
+    pollEval()
+    return () => { cancelled = true }
+  }, [awaitingEval, sessionId])
 
   const handleEnd = async () => {
     if (!sessionId) return
@@ -534,6 +638,47 @@ function DebatePageInner() {
     )
   }
 
+  // 실전 모드 준비시간 전체화면
+  if (phase === "prep") {
+    const mm = String(Math.floor(prepRemaining / 60)).padStart(2, "0")
+    const ss = String(prepRemaining % 60).padStart(2, "0")
+    const progress = prepSeconds > 0 ? prepRemaining / prepSeconds : 0
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6">
+        <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
+          <Badge variant="outline" className="gap-1.5 border-rose-500/30 bg-rose-500/10 text-rose-400">
+            <Clock className="h-3.5 w-3.5" />
+            실전 모드 · 준비 시간
+          </Badge>
+          <div>
+            <p className="text-sm text-muted-foreground">주제</p>
+            <h1 className="mt-1 text-lg font-semibold text-foreground">{selectedTopic?.title ?? topicTitleParam}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              내 입장: {selectedStance === "PRO" ? "찬성" : "반대"}
+            </p>
+          </div>
+          {/* 카운트다운 */}
+          <div className="relative flex h-44 w-44 items-center justify-center">
+            <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="45" fill="none" strokeWidth="6" className="stroke-secondary" />
+              <circle
+                cx="50" cy="50" r="45" fill="none" strokeWidth="6" strokeLinecap="round"
+                className="stroke-primary transition-[stroke-dashoffset] duration-1000 ease-linear"
+                strokeDasharray={2 * Math.PI * 45}
+                strokeDashoffset={2 * Math.PI * 45 * (1 - progress)}
+              />
+            </svg>
+            <span className="text-4xl font-bold tabular-nums text-foreground">{mm}:{ss}</span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            준비 시간 동안 논리를 정리하세요.<br />
+            시간이 끝나면 자동으로 토론이 시작됩니다.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
@@ -681,76 +826,136 @@ function DebatePageInner() {
               {/* Input Area */}
               {phase === "debating" && debateState?.waitingForUser && (
                 <div className="mt-4 space-y-2">
-                  {/* 실시간 트랜스크립트 */}
-                  {sttTranscript && (
-                    <div className="rounded-lg border border-border/50 bg-secondary/30 px-4 py-3 text-sm text-foreground min-h-12">
-                      {sttTranscript}
+                  {isPractice && feedbackTurn ? (
+                    /* PRACTICE: 턴 평가 패널 → 다시 말하기 / 확정 */
+                    <div className="space-y-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-foreground">이번 발언 피드백</p>
+                        {feedbackTurn.weightedScore != null && (
+                          <Badge variant="outline" className="border-emerald-500/40 text-emerald-500">
+                            {feedbackTurn.weightedScore.toFixed(1)}점
+                          </Badge>
+                        )}
+                      </div>
+                      {feedbackTurn.evalStrengths && (
+                        <div>
+                          <p className="text-xs font-medium text-emerald-500">잘한 점</p>
+                          <p className="text-sm text-foreground/90 whitespace-pre-wrap">{feedbackTurn.evalStrengths}</p>
+                        </div>
+                      )}
+                      {feedbackTurn.evalImprovements && (
+                        <div>
+                          <p className="text-xs font-medium text-amber-500">개선할 점</p>
+                          <p className="text-sm text-foreground/90 whitespace-pre-wrap">{feedbackTurn.evalImprovements}</p>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 pt-1">
+                        <Button
+                          variant="outline"
+                          className="flex-1 gap-1.5"
+                          disabled={submitting}
+                          onClick={() => {
+                            // 다시 말하기 — 평가 패널 닫고 재녹음. 다음 제출(commit=false)이 직전 시도를 교체.
+                            setFeedbackTurn(null)
+                            setSttReady(false)
+                            setRecording(false)
+                          }}
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                          다시 말하기
+                        </Button>
+                        <Button
+                          className="flex-1 gap-1.5"
+                          disabled={submitting}
+                          onClick={handleCommit}
+                        >
+                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                          확정하고 다음으로
+                        </Button>
+                      </div>
                     </div>
-                  )}
-                  {/* 피드백 */}
-                  {sttFeedback && (
-                    <p className="text-xs text-amber-500 px-1">{sttFeedback}</p>
-                  )}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* 녹음 토글 버튼 */}
-                    <Button
-                      variant={recording ? "destructive" : "outline"}
-                      onClick={() => {
-                        if (recording) {
-                          setRecording(false)
-                        } else {
-                          setSttReady(false)
-                          setRecording(true)
-                        }
-                      }}
-                      disabled={submitting || sttReady}
-                      className="gap-2"
-                    >
-                      {recording ? (
-                        <>
-                          <MicOff className="h-4 w-4" />
-                          녹음 완료
-                        </>
-                      ) : (
-                        <>
-                          <Mic className="h-4 w-4" />
-                          {sttTranscript ? "다시 녹음" : "녹음 시작"}
-                        </>
+                  ) : isPractice && awaitingEval ? (
+                    /* PRACTICE: 평가 도착 대기 */
+                    <div className="flex items-center justify-center gap-2 rounded-lg border border-border/50 bg-secondary/30 py-4 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      발언을 평가하고 있어요...
+                    </div>
+                  ) : (
+                    <>
+                      {/* 실시간 트랜스크립트 */}
+                      {sttTranscript && (
+                        <div className="rounded-lg border border-border/50 bg-secondary/30 px-4 py-3 text-sm text-foreground min-h-12">
+                          {sttTranscript}
+                        </div>
                       )}
-                    </Button>
-                    {/* 오디오 레벨 인디케이터 */}
-                    {recording && (
-                      <div className="flex items-end gap-0.5 h-6">
-                        {[0.4, 0.6, 1, 0.6, 0.4].map((scale, i) => (
-                          <div
-                            key={i}
-                            className="w-1 rounded-full bg-primary transition-all duration-75"
-                            style={{ height: `${Math.max(4, sttAudioLevel * scale * 0.24)}px` }}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {/* 처리 중 표시 */}
-                    {!recording && sttTranscript && !sttReady && (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        처리 중...
-                      </div>
-                    )}
-                    {/* 제출 버튼 */}
-                    <Button
-                      size="icon"
-                      onClick={handleSubmitTurn}
-                      disabled={!sttReady || submitting}
-                      className="h-10 w-10 shrink-0 ml-auto"
-                    >
-                      {submitting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4" />
+                      {/* 실시간 STT 피드백 — 연습 모드에서만 (실전은 종료 후 리포트에서 한 번에) */}
+                      {isPractice && sttFeedback && (
+                        <p className="text-xs text-amber-500 px-1">{sttFeedback}</p>
                       )}
-                    </Button>
-                  </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* 녹음 토글 (제출 전 재녹음은 양 모드 모두 허용) */}
+                        <Button
+                          variant={recording ? "destructive" : "outline"}
+                          onClick={() => {
+                            if (recording) {
+                              setRecording(false)
+                            } else {
+                              setSttReady(false)
+                              setRecording(true)
+                            }
+                          }}
+                          disabled={submitting}
+                          className="gap-2"
+                        >
+                          {recording ? (
+                            <>
+                              <MicOff className="h-4 w-4" />
+                              녹음 완료
+                            </>
+                          ) : (
+                            <>
+                              <Mic className="h-4 w-4" />
+                              {sttTranscript ? "다시 녹음" : "녹음 시작"}
+                            </>
+                          )}
+                        </Button>
+                        {/* 오디오 레벨 인디케이터 */}
+                        {recording && (
+                          <div className="flex items-end gap-0.5 h-6">
+                            {[0.4, 0.6, 1, 0.6, 0.4].map((scale, i) => (
+                              <div
+                                key={i}
+                                className="w-1 rounded-full bg-primary transition-all duration-75"
+                                style={{ height: `${Math.max(4, sttAudioLevel * scale * 0.24)}px` }}
+                              />
+                            ))}
+                          </div>
+                        )}
+                        {/* 처리 중 표시 */}
+                        {!recording && sttTranscript && !sttReady && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            처리 중...
+                          </div>
+                        )}
+                        {/* 제출 — PRACTICE는 시도(commit=false)→평가, REAL은 확정(commit=true)→잠금 */}
+                        <Button
+                          onClick={isPractice ? handleAttempt : handleCommit}
+                          disabled={!sttReady || submitting}
+                          className="shrink-0 ml-auto gap-1.5"
+                        >
+                          {submitting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <>
+                              <Send className="h-4 w-4" />
+                              {isPractice ? "평가 받기" : "제출"}
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
