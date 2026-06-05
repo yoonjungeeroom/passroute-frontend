@@ -21,8 +21,14 @@ export interface DebatePersona {
   weaknesses: string[]
 }
 
+// FE↔BE wire 표기는 소문자. real = 실전(EXAM), practice = 연습.
+export type DebateMode = "practice" | "real"
+
 export interface DebateSessionCreateResponse {
   sessionId: number
+  mode: DebateMode
+  // 준비시간(초). real=60, practice=0. 백엔드가 항상 내려주지만 안전하게 폴백.
+  prepSeconds?: number
 }
 
 export type SpeakerType = "USER" | "AI_COMPETITOR" | "AI_INTERVIEWER"
@@ -36,10 +42,16 @@ export interface DebateTurn {
   content: string
   audioUrl: string | null
   createdAt: string
+  // 사용자 턴 평가 — PRACTICE 모드에서만 채워지고 REAL은 항상 null (종료 리포트로만 노출)
+  weightedScore?: number | null
+  evalStrengths?: string | null
+  evalImprovements?: string | null
 }
 
 export interface DebateStateResponse {
   sessionId: number
+  mode: DebateMode
+  prepSeconds: number
   currentState: string
   waitingForUser: boolean
   version: number
@@ -123,6 +135,7 @@ export async function createDebateSession(data: {
   userStance: "PRO" | "CON"
   personaId: number
   difficulty: "EASY" | "NORMAL" | "HARD"
+  mode: DebateMode // 백엔드 @NotNull — 누락 시 400
 }): Promise<DebateSessionCreateResponse> {
   return apiFetch<DebateSessionCreateResponse>(
     "/debate/sessions",
@@ -147,10 +160,15 @@ export async function getDebateState(sessionId: number): Promise<DebateStateResp
   )
 }
 
-export async function submitDebateTurn(sessionId: number): Promise<void> {
+/**
+ * 사용자 발화 제출. 발화 내용(STT)은 WebSocket으로 서버에 누적되므로 body엔 commit만 보낸다.
+ * - PRACTICE: commit=false → 평가만(재시도 가능), commit=true → 라운드 확정 + AI 진행
+ * - REAL: commit 무시, 항상 확정(lock)
+ */
+export async function submitDebateTurn(sessionId: number, commit: boolean): Promise<void> {
   return apiFetch<void>(
     `/debate/${sessionId}/turn`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify({ commit }) },
     "토론 턴 제출에 실패했습니다"
   )
 }
