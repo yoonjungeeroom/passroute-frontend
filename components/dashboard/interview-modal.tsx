@@ -1223,11 +1223,16 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                     </div>
                     <h3 className="font-semibold text-foreground">찬성</h3>
                   </div>
-                  <ul className="space-y-1">
-                    {selectedTopic?.proKeyPoints.map((point, i) => (
-                      <li key={i} className="text-xs text-muted-foreground">- {point}</li>
-                    ))}
-                  </ul>
+                  {/* 실전(real) 모드는 근거 숨김 — 데이터는 받되 화면에만 노출하지 않는다 */}
+                  {selectedPracticeMode === "real" ? (
+                    <p className="text-xs text-muted-foreground/70">실전 모드에서는 근거가 제공되지 않습니다</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {selectedTopic?.proKeyPoints.map((point, i) => (
+                        <li key={i} className="text-xs text-muted-foreground">- {point}</li>
+                      ))}
+                    </ul>
+                  )}
                 </button>
 
                 <button
@@ -1245,11 +1250,16 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                     </div>
                     <h3 className="font-semibold text-foreground">반대</h3>
                   </div>
-                  <ul className="space-y-1">
-                    {selectedTopic?.conKeyPoints.map((point, i) => (
-                      <li key={i} className="text-xs text-muted-foreground">- {point}</li>
-                    ))}
-                  </ul>
+                  {/* 실전(real) 모드는 근거 숨김 — 데이터는 받되 화면에만 노출하지 않는다 */}
+                  {selectedPracticeMode === "real" ? (
+                    <p className="text-xs text-muted-foreground/70">실전 모드에서는 근거가 제공되지 않습니다</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {selectedTopic?.conKeyPoints.map((point, i) => (
+                        <li key={i} className="text-xs text-muted-foreground">- {point}</li>
+                      ))}
+                    </ul>
+                  )}
                 </button>
               </div>
             </div>
