@@ -139,7 +139,7 @@ export default function ReportsPage() {
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
-      <main className="w-full overflow-auto lg:ml-64">
+      <main className="w-full overflow-auto pt-14 lg:ml-64 lg:pt-0">
         <MobileHeader />
         <div className="sticky top-14 z-30 border-b border-border/30 bg-background/95 backdrop-blur-sm lg:top-0">
           <div className="px-4 pt-8 pb-5 sm:px-6 lg:px-8">
