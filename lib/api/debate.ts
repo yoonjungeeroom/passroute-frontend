@@ -161,14 +161,17 @@ export async function getDebateState(sessionId: number): Promise<DebateStateResp
 }
 
 /**
- * 사용자 발화 제출. 발화 내용(STT)은 WebSocket으로 서버에 누적되므로 body엔 commit만 보낸다.
+ * 사용자 발화 제출.
+ * - 발화 내용(STT 전사)은 body의 content로 직접 보낸다. 백엔드는 content 우선, 없으면 pending_stt(AI-WS) 폴백.
+ *   → AI 서버의 비동기 DB쓰기 타이밍에 의존하지 않으므로 "녹음 후 고정 대기" 없이 전사 확보 즉시 제출 가능.
+ * - 발화가 비어 있으면 백엔드가 409 DEBATE_STT_NOT_READY(code "DB006") → 재시도/재녹음 안내로 처리.
  * - PRACTICE: commit=false → 평가만(재시도 가능), commit=true → 라운드 확정 + AI 진행
  * - REAL: commit 무시, 항상 확정(lock)
  */
-export async function submitDebateTurn(sessionId: number, commit: boolean): Promise<void> {
+export async function submitDebateTurn(sessionId: number, content: string, commit: boolean): Promise<void> {
   return apiFetch<void>(
     `/debate/${sessionId}/turn`,
-    { method: "POST", body: JSON.stringify({ commit }) },
+    { method: "POST", body: JSON.stringify({ content, commit }) },
     "토론 턴 제출에 실패했습니다"
   )
 }

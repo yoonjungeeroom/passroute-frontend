@@ -45,6 +45,7 @@ import {
   type DebateTurn,
   type DebateRound,
 } from "@/lib/api/debate"
+import { ApiError } from "@/lib/api/client"
 import { useDebateSTT } from "@/hooks/use-debate-stt"
 
 const STATE_TO_ROUND: Record<string, DebateRound> = {
@@ -122,6 +123,8 @@ function DebatePageInner() {
   // STT
   const [recording, setRecording] = useState(false)
   const [sttReady, setSttReady] = useState(false)
+  // 빈 발화(409 DEBATE_STT_NOT_READY) 등 제출 관련 안내 메시지
+  const [submitNotice, setSubmitNotice] = useState<string | null>(null)
   const currentRound = debateState?.currentState
     ? (STATE_TO_ROUND[debateState.currentState] ?? null)
     : null
@@ -382,22 +385,24 @@ function DebatePageInner() {
     if (!debateState?.waitingForUser) {
       setRecording(false)
       setSttReady(false)
+      setSubmitNotice(null)
     }
   }, [debateState?.waitingForUser])
 
-  // 녹음 완료 후 1.5초 대기 → sttReady (DB write 여유 시간)
+  // 전사(WS {status:"completed"}) 확보 + 녹음 종료 시 즉시 제출 가능.
+  // body content로 전사를 직접 보내므로 pending_stt(AI 비동기 DB쓰기) 타이밍을 기다릴 필요가 없다.
   useEffect(() => {
-    if (recording || !sttTranscript) return
-    const timer = setTimeout(() => setSttReady(true), 1500)
-    return () => clearTimeout(timer)
+    if (recording) return
+    if (sttTranscript.trim()) setSttReady(true)
   }, [recording, sttTranscript])
 
   // 확정 제출 — REAL은 즉시 lock, PRACTICE는 평가 패널에서 "확정" 시. commit=true → AI 진행.
   const handleCommit = async () => {
     if (!sessionId || submitting) return
     setSubmitting(true)
+    setSubmitNotice(null)
     try {
-      await submitDebateTurn(sessionId, true)
+      await submitDebateTurn(sessionId, sttTranscript, true)
       setSttReady(false)
       setRecording(false)
       setFeedbackTurn(null)
@@ -405,7 +410,11 @@ function DebatePageInner() {
       prevEvalTurnIdRef.current = null
       shownEvalIdRef.current = null
       setPollTrigger(prev => prev + 1) // 폴링 재개 → AI 응답 대기
-    } catch {
+    } catch (err) {
+      // 빈 발화(아직 인식된 게 없음) → 치명적 아님, 재시도/재녹음 안내
+      if (err instanceof ApiError && err.code === "DB006") {
+        setSubmitNotice("아직 인식된 발화가 없어요. 잠시 후 다시 시도하거나 다시 말씀해 주세요.")
+      }
       // keep state on error
     } finally {
       setSubmitting(false)
@@ -416,14 +425,19 @@ function DebatePageInner() {
   const handleAttempt = async () => {
     if (!sessionId || submitting || !sttReady) return
     setSubmitting(true)
+    setSubmitNotice(null)
     try {
       prevEvalTurnIdRef.current = shownEvalIdRef.current // 직전에 노출한 평가 턴은 무시 (재시도 교체 대비)
-      await submitDebateTurn(sessionId, false)
+      await submitDebateTurn(sessionId, sttTranscript, false)
       setSttReady(false)
       setRecording(false)
       setFeedbackTurn(null)
       setAwaitingEval(true) // 평가 도착 폴링 시작
-    } catch {
+    } catch (err) {
+      // 빈 발화(아직 인식된 게 없음) → 치명적 아님, 재시도/재녹음 안내
+      if (err instanceof ApiError && err.code === "DB006") {
+        setSubmitNotice("아직 인식된 발화가 없어요. 잠시 후 다시 시도하거나 다시 말씀해 주세요.")
+      }
       // keep state on error
     } finally {
       setSubmitting(false)
@@ -893,6 +907,10 @@ function DebatePageInner() {
                       {isPractice && sttFeedback && (
                         <p className="text-xs text-amber-500 px-1">{sttFeedback}</p>
                       )}
+                      {/* 빈 발화 제출 등 안내 (409 DEBATE_STT_NOT_READY) */}
+                      {submitNotice && (
+                        <p className="text-xs text-rose-500 px-1">{submitNotice}</p>
+                      )}
                       <div className="flex items-center gap-2 flex-wrap">
                         {/* 녹음 토글 (제출 전 재녹음은 양 모드 모두 허용) */}
                         <Button
@@ -902,6 +920,7 @@ function DebatePageInner() {
                               setRecording(false)
                             } else {
                               setSttReady(false)
+                              setSubmitNotice(null)
                               setRecording(true)
                             }
                           }}
