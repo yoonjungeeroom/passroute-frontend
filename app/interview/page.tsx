@@ -31,10 +31,11 @@ interface DeviceStatus {
   audioInput: "checking" | "detected" | "not-detected"
 }
 
-import { getSessionQuestions, submitAnswer, endInterview } from "@/lib/api/interview"
+import { getSessionQuestions, submitAnswer, endInterview, saveWorstClip } from "@/lib/api/interview"
 import type { SessionQuestion, AnswerProgressResponse } from "@/types/interview"
 import { useSTT } from "@/hooks/use-stt"
 import { useFaceAnalysis } from "@/hooks/use-face-analysis"
+import { useClipRecorder } from "@/hooks/use-clip-recorder"
 import { PreCheckScreen } from "@/components/pre-check-screen"
 
 // Countdown Component
@@ -161,6 +162,18 @@ function LiveInterviewScreen({
     active: answerState === "answering" && !isPaused,
   })
 
+  // Clip recorder hook - 답변 중 영상 녹화, 질문별 최악 15초 클립 메모리 보관
+  const { uploadWorstClip, isUploading } = useClipRecorder({
+    stream,
+    active: answerState === "answering" && !isPaused,
+    questionId: currentQuestion?.questionId ?? 0,
+    wpm,
+    silenceSec,
+    fillerCount: totalFillerCount,
+    gazeRatio,
+    gazeOffCount,
+  })
+
   // Timer effects
   useEffect(() => {
     if (isPaused) return
@@ -219,6 +232,8 @@ function LiveInterviewScreen({
     } else {
       try {
         await endInterview(sessionId)
+        const clip = await uploadWorstClip(sessionId)
+        if (clip) await saveWorstClip(sessionId, clip.url, clip.score)
       } catch { /* ignore */ }
       onEnd()
     }
@@ -439,8 +454,11 @@ function LiveInterviewScreen({
                   <Button className="gap-1.5 bg-foreground text-background hover:bg-foreground/90" onClick={handleFinishAnswer}>답변 완료<CheckCircle2 className="h-4 w-4" /></Button>
                 )}
                 {answerState === "answered" && (
-                  <Button className="gap-1.5 bg-foreground text-background hover:bg-foreground/90" onClick={handleNextQuestion}>
-                    {currentQuestionIndex < totalQuestions - 1 ? "다음 질문" : "면접 종료"}<ArrowRight className="h-4 w-4" />
+                  <Button className="gap-1.5 bg-foreground text-background hover:bg-foreground/90" onClick={handleNextQuestion} disabled={isUploading}>
+                    {isUploading
+                      ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />업로드 중...</>
+                      : <>{currentQuestionIndex < totalQuestions - 1 ? "다음 질문" : "면접 종료"}<ArrowRight className="h-4 w-4" /></>
+                    }
                   </Button>
                 )}
               </div>
