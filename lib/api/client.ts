@@ -1,5 +1,17 @@
 import type { ApiResponse } from "@/lib/auth-config"
 
+// 백엔드 에러 envelope의 code/httpStatus를 보존하는 에러. 호출부에서 err.code로 분기 가능.
+export class ApiError extends Error {
+  code: string
+  httpStatus: number
+  constructor(message: string, code: string, httpStatus: number) {
+    super(message)
+    this.name = "ApiError"
+    this.code = code
+    this.httpStatus = httpStatus
+  }
+}
+
 export function getAuthHeaders(): HeadersInit {
   const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null
   return {
@@ -105,7 +117,7 @@ export async function apiFetch<T>(
 
   const result: ApiResponse<T> = await response.json()
   if (!response.ok) {
-    throw new Error(result.message || errorMessage)
+    throw new ApiError(result.message || errorMessage, result.code, result.httpStatus ?? response.status)
   }
   return result.data as T
 }
