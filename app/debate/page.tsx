@@ -122,10 +122,21 @@ function DebatePageInner() {
   const prevEvalTurnIdRef = useRef<number | null>(null) // 재시도 폴링에서 무시할 직전 평가 턴 id
   const shownEvalIdRef = useRef<number | null>(null) // 마지막으로 노출한 평가 턴 id
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const playedTurnIds = useRef<Set<number>>(new Set())
-  // 새로 도착한 AI 턴 TTS를 순차 재생하기 위한 큐. 종료 단계처럼 AI 턴이 2개 연속 올 때 모두 들리게 한다.
-  const audioQueueRef = useRef<string[]>([])
-  const isPlayingRef = useRef(false)
+  const playedTurnIds = useRef<Set<number>>(new Set()) // 이미 큐에 넣어 처리한 턴 id
+  // 한 응답에 AI 턴이 여러 개 와도(상대 발언 + 면접관 cue 등) 동시에 띄우지 않고
+  // id 오름차순으로 하나씩 공개(텍스트) + 재생(TTS)하기 위한 "턴 공개 큐".
+  const revealQueueRef = useRef<DebateTurn[]>([])
+  const isRevealingRef = useRef(false)
+  const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 지금까지 공개된 턴 id 집합. 화면 표시는 이 집합에 든 턴만 사용한다.
+  const [revealedTurnIds, setRevealedTurnIds] = useState<Set<number>>(new Set())
+  // 공개 큐가 비워지는 동안 true — 입력창/분기 버튼을 잠깐 가려 새 턴이 다 공개된 뒤 노출되게 한다.
+  const [revealing, setRevealing] = useState(false)
+  // 채팅 로그 — 공개된 상대(AI_COMPETITOR)/내(USER) 발언이 시간순(id 오름차순)으로 쌓인다.
+  // 면접관(AI_INTERVIEWER)은 채팅에 넣지 않고 상단 배너에만 표시. latestTurns가 최근 N개 윈도우라도
+  // 밀려난 발언이 사라지지 않도록 공개 시점에 자체 누적한다.
+  const [chatTurns, setChatTurns] = useState<DebateTurn[]>([])
+  const chatScrollRef = useRef<HTMLDivElement>(null)
 
   // STT
   const [recording, setRecording] = useState(false)
@@ -138,11 +149,10 @@ function DebatePageInner() {
   const { transcript: sttTranscript, audioLevel: sttAudioLevel, feedback: sttFeedback } =
     useDebateSTT({ sessionId, round: currentRound, stream: mediaStream, active: recording })
 
-  // 화자별 최신 발언 — 카드 하단 자막/상단 면접관 배너에 사용 (latestTurns는 오래된→최신 순)
-  const reversedTurns = debateState?.latestTurns ? [...debateState.latestTurns].reverse() : []
-  const latestInterviewerTurn = reversedTurns.find(t => t.speakerType === "AI_INTERVIEWER")
-  const latestCompetitorTurn = reversedTurns.find(t => t.speakerType === "AI_COMPETITOR")
-  const latestUserTurn = reversedTurns.find(t => t.speakerType === "USER")
+  // 면접관 최신 멘트 — 공개된 AI_INTERVIEWER 턴만 대상(상단 배너용). latestTurns는 오래된→최신 순.
+  const latestInterviewerTurn = debateState?.latestTurns
+    ? [...debateState.latestTurns].reverse().find(t => t.speakerType === "AI_INTERVIEWER" && revealedTurnIds.has(t.id))
+    : undefined
 
   // 쿼리스트링 누락/오류 시 대시보드로 (모달을 거치지 않은 직접 접근)
   useEffect(() => {
@@ -212,59 +222,116 @@ function DebatePageInner() {
   }, [phase, sessionId, pollTrigger])
 
 
-  // 세션 변경 및 언마운트 시 오디오 정지 + 재생 기록/큐 초기화
+  // 세션 변경 및 언마운트 시 오디오 정지 + 공개 큐/기록 초기화
   useEffect(() => {
     playedTurnIds.current.clear()
-    audioQueueRef.current = []
-    isPlayingRef.current = false
+    revealQueueRef.current = []
+    isRevealingRef.current = false
+    setRevealedTurnIds(new Set())
+    setRevealing(false)
+    setChatTurns([])
     return () => {
-      // cleanup 이후 큐의 다음 오디오가 이어 재생되지 않도록 큐를 비우고 onended를 해제한다.
+      // cleanup 이후 큐의 다음 턴이 이어 공개/재생되지 않도록 큐·타이머·onended를 모두 해제.
       // 단, audioRef 요소 자체는 null로 버리지 않는다 — handleCreateSession의 사용자 제스처로
       // 자동재생 잠금이 풀린 단일 요소라, 새로 만들면(세션 생성 직후 cleanup 포함) 자동재생이 다시 차단된다.
-      audioQueueRef.current = []
-      isPlayingRef.current = false
+      revealQueueRef.current = []
+      isRevealingRef.current = false
+      if (advanceTimerRef.current) { clearTimeout(advanceTimerRef.current); advanceTimerRef.current = null }
       if (audioRef.current) {
         audioRef.current.onended = null
+        audioRef.current.onerror = null
         audioRef.current.pause()
       }
     }
   }, [sessionId])
 
-  // 큐의 다음 TTS를 재생. 재생 끝나면(onended) 다음 것으로 이어진다.
-  const playNextInQueue = useCallback(() => {
-    // handleCreateSession에서 활성화해 둔 단일 오디오 요소를 재사용 (자동재생 차단 방지)
-    const audio = audioRef.current ?? (audioRef.current = new Audio())
-    const nextUrl = audioQueueRef.current.shift()
-    if (!nextUrl) {
-      isPlayingRef.current = false
-      return
-    }
-    isPlayingRef.current = true
-    audio.onended = () => playNextInQueue()
-    audio.pause()
-    audio.src = nextUrl
-    audio.currentTime = 0
-    audio.play().catch((e) => {
-      console.warn("[debate] TTS 자동재생 실패:", e)
-      // 재생 실패 시에도 다음 큐로 진행 (한 턴 실패가 이후 턴 재생을 막지 않도록)
-      playNextInQueue()
+  // 채팅 로그에 발언 누적 — 상대(AI_COMPETITOR)/내(USER) 발언만, id 기준 dedupe + 오름차순 유지.
+  const appendChat = useCallback((turns: DebateTurn[]) => {
+    const chat = turns.filter(t => t.speakerType === "USER" || t.speakerType === "AI_COMPETITOR")
+    if (chat.length === 0) return
+    setChatTurns(prev => {
+      const seen = new Set(prev.map(t => t.id))
+      const add = chat.filter(t => !seen.has(t.id))
+      return add.length ? [...prev, ...add].sort((a, b) => a.id - b.id) : prev
     })
   }, [])
 
-  // TTS 자동 재생 — audioUrl 있는 새 AI 턴을 도착 순서대로 큐에 넣어 순차 재생.
-  // 종료 단계: 상대 CLOSING + 면접관 MODERATION이 유저 턴 없이 한 번에 와도 둘 다 재생된다.
+  // 공개 큐에서 다음 턴 하나를 공개(화면 표시) + TTS 재생.
+  // 오디오가 있으면 재생이 끝났을 때(onended), 없으면 짧은 딜레이 후 다음 턴으로 넘어간다.
+  const revealNext = useCallback(() => {
+    // 이전 단계의 예약 타이머/이벤트핸들러를 먼저 정리해 중복 진행을 막는다.
+    if (advanceTimerRef.current) { clearTimeout(advanceTimerRef.current); advanceTimerRef.current = null }
+    if (audioRef.current) { audioRef.current.onended = null; audioRef.current.onerror = null }
+
+    const turn = revealQueueRef.current.shift()
+    if (!turn) {
+      isRevealingRef.current = false
+      setRevealing(false)
+      return
+    }
+    isRevealingRef.current = true
+    setRevealing(true)
+    // 이 턴을 공개 (화면에 노출) + 채팅 로그에 누적(상대 발언만, 면접관은 배너)
+    setRevealedTurnIds(prev => {
+      const next = new Set(prev)
+      next.add(turn.id)
+      return next
+    })
+    appendChat([turn])
+
+    if (turn.audioUrl) {
+      // handleCreateSession에서 활성화해 둔 단일 오디오 요소를 재사용 (자동재생 차단 방지)
+      const audio = audioRef.current ?? (audioRef.current = new Audio())
+      audio.onended = () => revealNext()
+      // 재생 중 디코드/로드 오류로 ended가 안 와도 막히지 않도록 (입력창이 큐에 묶여 있으므로 중요)
+      audio.onerror = () => { advanceTimerRef.current = setTimeout(revealNext, 600) }
+      audio.pause()
+      audio.src = turn.audioUrl
+      audio.currentTime = 0
+      audio.play().catch((e) => {
+        console.warn("[debate] TTS 자동재생 실패:", e)
+        // 재생 실패해도 다음 턴으로 진행 (한 턴 실패가 이후 공개를 막지 않도록)
+        advanceTimerRef.current = setTimeout(revealNext, 600)
+      })
+    } else {
+      // 오디오 없는 턴은 잠깐 보여주고 다음으로 (동시 노출 방지용 최소 간격)
+      advanceTimerRef.current = setTimeout(revealNext, 1200)
+    }
+  }, [appendChat])
+
+  // 새로 도착한 턴을 공개 큐에 적재.
+  // - AI 턴(상대/면접관): id 오름차순으로 큐에 쌓아 하나씩 공개 → 상대 발언 + 면접관 cue가
+  //   한 응답에 같이 와도 동시에 뜨지 않고 순서대로 표시+재생된다. 클로징 TTS 누락도 같이 해결.
+  // - USER 턴: 본인 발화라 즉시 공개.
   useEffect(() => {
     if (!debateState?.latestTurns) return
-    const newTurns = debateState.latestTurns.filter(
-      (t) => t.speakerType !== "USER" && t.audioUrl && !playedTurnIds.current.has(t.id)
-    )
-    if (newTurns.length === 0) return
-    for (const t of newTurns) {
-      playedTurnIds.current.add(t.id)
-      audioQueueRef.current.push(t.audioUrl as string)
+    const incoming = debateState.latestTurns.filter(t => !playedTurnIds.current.has(t.id))
+    if (incoming.length === 0) return
+    for (const t of incoming) playedTurnIds.current.add(t.id)
+
+    const userTurns = incoming.filter(t => t.speakerType === "USER")
+    if (userTurns.length > 0) {
+      setRevealedTurnIds(prev => {
+        const next = new Set(prev)
+        userTurns.forEach(t => next.add(t.id))
+        return next
+      })
+      appendChat(userTurns) // 내 발언은 즉시 채팅에 누적
     }
-    if (!isPlayingRef.current) playNextInQueue()
-  }, [debateState?.latestTurns, playNextInQueue])
+
+    const aiTurns = incoming
+      .filter(t => t.speakerType !== "USER")
+      .sort((a, b) => a.id - b.id) // 도착 순서 보장 (id 오름차순 = 생성 순)
+    if (aiTurns.length === 0) return
+    revealQueueRef.current.push(...aiTurns)
+    if (!isRevealingRef.current) revealNext()
+  }, [debateState?.latestTurns, revealNext, appendChat])
+
+  // 새 발언/라이브 STT가 쌓이면 채팅 맨 아래로 자동 스크롤
+  useEffect(() => {
+    const el = chatScrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [chatTurns, recording, sttTranscript])
 
   const handleCreateSession = async () => {
     if (isNaN(topicId) || isNaN(personaId) || !stanceParam) return
@@ -807,7 +874,7 @@ function DebatePageInner() {
                 {/* AI 경쟁자 */}
                 <div className={cn(
                   "relative flex h-28 flex-col items-center justify-center gap-1.5 rounded-xl border bg-secondary/30 transition-all sm:h-36",
-                  polling && !debateState?.waitingForUser ? "border-primary/60 ring-2 ring-primary/20" : "border-border/50"
+                  revealing || (polling && !debateState?.waitingForUser) ? "border-primary/60 ring-2 ring-primary/20" : "border-border/50"
                 )}>
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary border border-border/50 text-base font-bold text-foreground sm:h-14 sm:w-14 sm:text-lg">
                     {selectedPersona?.name?.slice(0, 1) ?? "A"}
@@ -816,7 +883,7 @@ function DebatePageInner() {
                     <p className="text-xs font-semibold text-foreground">{selectedPersona?.name ?? "AI 경쟁자"}</p>
                     <p className="text-[10px] text-muted-foreground">{selectedStance === "PRO" ? "반대" : "찬성"}</p>
                   </div>
-                  {polling && !debateState?.waitingForUser && (
+                  {(revealing || (polling && !debateState?.waitingForUser)) && (
                     <div className="absolute bottom-2 left-0 right-0 flex justify-center">
                       <div className="flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5">
                         <Loader2 className="h-2.5 w-2.5 animate-spin text-muted-foreground" />
@@ -853,51 +920,60 @@ function DebatePageInner() {
                 </div>
               </div>
 
-              {/* 발언 자막 — 각 화자 카드 바로 아래. 실전 모드는 숨김(내 발언은 녹음 중에만 라이브) */}
-              <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 sm:gap-3">
-                {/* 상대 발언 */}
-                <div className="min-h-0 overflow-y-auto rounded-xl border border-border/50 bg-card p-3">
-                  {isPractice ? (
-                    latestCompetitorTurn?.content ? (
-                      <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{latestCompetitorTurn.content}</p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">아직 발언이 없습니다</p>
-                    )
+              {/* 발언 채팅 로그 — 공개된 상대/내 발언이 카톡식으로 아래로 쌓인다(상대 왼쪽·내 발언 오른쪽).
+                  면접관은 상단 배너에만. 실전 모드는 잠금(내용은 종료 후 리포트). */}
+              <div ref={chatScrollRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-xl border border-border/50 bg-card p-3">
+                {isPractice ? (
+                  chatTurns.length === 0 && !recording ? (
+                    <p className="text-xs text-muted-foreground">아직 발언이 없습니다</p>
                   ) : (
-                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Lock className="h-3 w-3 shrink-0" /> 실전 모드 · 발언은 종료 후 리포트에서
-                    </p>
-                  )}
-                </div>
+                    chatTurns.map((t) => {
+                      const isMe = t.speakerType === "USER"
+                      return (
+                        <div key={t.id} className={cn("flex", isMe ? "justify-end" : "justify-start")}>
+                          <div className="flex max-w-[80%] flex-col gap-0.5">
+                            <span className={cn("text-[10px] text-muted-foreground", isMe ? "text-right" : "text-left")}>
+                              {isMe ? "나" : (selectedPersona?.name ?? "AI 경쟁자")}
+                            </span>
+                            <div className={cn(
+                              "rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap",
+                              isMe
+                                ? "rounded-br-sm bg-primary text-primary-foreground"
+                                : "rounded-bl-sm bg-secondary text-foreground"
+                            )}>
+                              {t.content}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )
+                ) : !recording ? (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Lock className="h-3 w-3 shrink-0" /> 실전 모드 · 발언은 종료 후 리포트에서
+                  </p>
+                ) : null}
 
-                {/* 내 발언 — 녹음 중 라이브 STT, 그 외엔 최신 발언(연습만) */}
-                <div className="min-h-0 overflow-y-auto rounded-xl border border-border/50 bg-card p-3">
-                  {recording ? (
-                    sttTranscript ? (
-                      <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{sttTranscript}</p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">말씀해 주세요…</p>
-                    )
-                  ) : isPractice ? (
-                    latestUserTurn?.content ? (
-                      <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{latestUserTurn.content}</p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">아직 발언이 없습니다</p>
-                    )
-                  ) : (
-                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Lock className="h-3 w-3 shrink-0" /> 실전 모드 · 발언은 종료 후 리포트에서
-                    </p>
-                  )}
-                </div>
+                {/* 녹음 중 라이브 STT — 아직 미확정인 내 발언(오른쪽, 옅은 색). 양 모드 공통 */}
+                {recording && (
+                  <div className="flex justify-end">
+                    <div className="flex max-w-[80%] flex-col gap-0.5">
+                      <span className="text-right text-[10px] text-muted-foreground">나 · 입력 중</span>
+                      <div className="rounded-2xl rounded-br-sm bg-primary/60 px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">
+                        {sttTranscript || "말씀해 주세요…"}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {pollTimeout && !debateState?.waitingForUser && (
                 <p className="mt-2 text-center text-xs text-muted-foreground">응답이 지연되고 있습니다. 잠시만 기다려주세요.</p>
               )}
 
-              {/* Input Area */}
-              {phase === "debating" && debateState?.waitingForUser && (
+              {/* Input Area — 공개 큐 비워진 뒤에만(revealing=false). 배치 응답에 waitingForUser가 같이 와도
+                  새 턴 공개가 끝난 다음 입력창이 뜨도록 한다. */}
+              {phase === "debating" && debateState?.waitingForUser && !revealing && (
                 <div className="mt-4 space-y-2">
                   {isPractice && feedbackTurn ? (
                     /* PRACTICE: 턴 평가 패널 → 다시 말하기 / 확정 */
@@ -1034,7 +1110,7 @@ function DebatePageInner() {
 
               {/* 분기 선택 — 반박 라운드 종료 후(REBUTTAL_1_DECISION). 발언이 아니라 버튼 선택.
                   availableChoices에 rebut_again이 없으면(REBUTTAL_2 후) '토론 마무리'만 노출. */}
-              {phase === "debating" && debateState?.awaitingDecision && (() => {
+              {phase === "debating" && debateState?.awaitingDecision && !revealing && (() => {
                 const choices = debateState.availableChoices ?? ["rebut_again", "finish"]
                 const canRebutAgain = choices.includes("rebut_again")
                 return (
