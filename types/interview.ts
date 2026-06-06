@@ -33,6 +33,8 @@ export interface SessionQuestion {
   questionId: number
   questionText: string
   questionOrder: number
+  // 면접관 TTS(S3 mp3). null이면 음성 미지원/합성 실패/서버 TTS 비활성 → 텍스트만, 재생 UI 숨김.
+  audioUrl?: string | null
 }
 
 export interface AnswerSubmission {
@@ -51,6 +53,8 @@ export interface AnswerProgressResponse {
   followUpQuestionId?: number
   followUpQuestionText?: string
   lastQuestion: boolean
+  // 꼬리질문 면접관 TTS(S3 mp3). null이면 텍스트만, 재생 UI 숨김.
+  audioUrl?: string | null
   evaluation?: {
     structure?: number
     logic?: number
