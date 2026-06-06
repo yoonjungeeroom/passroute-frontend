@@ -96,6 +96,7 @@ function LiveInterviewScreen({
   stage,
   onEnd,
   stream,
+  playQuestionAudio,
 }: {
   mode: InterviewMode
   sessionId: number
@@ -105,6 +106,7 @@ function LiveInterviewScreen({
   stage?: string
   onEnd: () => void
   stream: MediaStream | null
+  playQuestionAudio: (url: string | null | undefined) => void
 }) {
   const userVideoRef = useRef<HTMLVideoElement>(null)
 
@@ -119,10 +121,10 @@ function LiveInterviewScreen({
   const [totalTime, setTotalTime] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
   const [reAnswerCount, setReAnswerCount] = useState(0)
-  const [followUpQuestion, setFollowUpQuestion] = useState<{ id: number; text: string } | null>(null)
+  const [followUpQuestion, setFollowUpQuestion] = useState<{ id: number; text: string; audioUrl?: string | null } | null>(null)
 
-  const currentQuestion = followUpQuestion
-    ? { questionId: followUpQuestion.id, questionText: followUpQuestion.text, questionOrder: -1 }
+  const currentQuestion: SessionQuestion | undefined = followUpQuestion
+    ? { questionId: followUpQuestion.id, questionText: followUpQuestion.text, questionOrder: -1, audioUrl: followUpQuestion.audioUrl }
     : questions[currentQuestionIndex]
   const totalQuestions = questions.length
   const questionTimeLimit = 210 // 3:30
@@ -138,6 +140,18 @@ function LiveInterviewScreen({
   useEffect(() => {
     if (transcript) lastTranscriptRef.current = transcript
   }, [transcript])
+
+  // 새 질문이 처음 표시될 때 한 번만 면접관 TTS 자동재생(메인/꼬리질문 공통). audioUrl null이면 미재생.
+  // 이미 재생한 질문은 건너뛴다 — 꼬리질문 종료 후 원래 질문으로 되돌아가도 재재생되지 않게.
+  const playedQuestionIdsRef = useRef<Set<number>>(new Set())
+  useEffect(() => {
+    const id = currentQuestion?.questionId
+    if (id == null || playedQuestionIdsRef.current.has(id)) return
+    playedQuestionIdsRef.current.add(id)
+    playQuestionAudio(currentQuestion?.audioUrl)
+    // questionId 기준으로만 트리거.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentQuestion?.questionId])
 
   // Face analysis hook - always active during interview
   const { gazeRatio, blinkCount, gazeOffCount, ear, faceDetected, feedback: faceFeedback } = useFaceAnalysis({
@@ -182,7 +196,7 @@ function LiveInterviewScreen({
         voiceData: wpm > 0 ? { filler_word_count: fillerCount, wpm } : undefined,
       })
       if (result.hasFollowUp && result.followUpQuestionId && result.followUpQuestionText) {
-        setFollowUpQuestion({ id: result.followUpQuestionId, text: result.followUpQuestionText })
+        setFollowUpQuestion({ id: result.followUpQuestionId, text: result.followUpQuestionText, audioUrl: result.audioUrl })
       } else {
         setFollowUpQuestion(null)
       }
@@ -392,6 +406,18 @@ function LiveInterviewScreen({
                   {followUpQuestion && (
                     <span className="rounded border border-border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">꼬리 질문</span>
                   )}
+                  {/* 면접관 TTS 다시 듣기 — audioUrl 있을 때만 노출(null이면 숨김) */}
+                  {currentQuestion?.audioUrl && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 gap-1 px-2 text-xs text-muted-foreground"
+                      onClick={() => playQuestionAudio(currentQuestion?.audioUrl)}
+                    >
+                      <Headphones className="h-3.5 w-3.5" />
+                      다시 듣기
+                    </Button>
+                  )}
                 </div>
                 <p className="text-base font-medium leading-relaxed text-foreground">
                   {mode === "practice" ? currentQuestion?.questionText ?? "질문을 불러오는 중..." : "질문이 재생되었습니다. 답변을 시작하세요."}
@@ -462,6 +488,22 @@ function InterviewPageInner() {
     audioInput: "checking",
   })
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null)
+
+  // 면접관 TTS 재생 — 토론면접과 동일하게 단일 오디오 요소를 재사용한다.
+  // (자동재생 정책 우회: 사전점검 완료 클릭 시점에 미리 활성화해 둠 → 이후 질문 표시 때 자동재생 가능)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const playQuestionAudio = useCallback((url: string | null | undefined) => {
+    if (!url) return // null(=TTS 미지원/비활성)이면 재생하지 않음
+    const audio = audioRef.current ?? (audioRef.current = new Audio())
+    audio.pause()
+    audio.src = url
+    audio.currentTime = 0
+    audio.play().catch((e) => console.warn("[interview] TTS 자동재생 실패:", e))
+  }, [])
+  // 언마운트 시 정지
+  useEffect(() => {
+    return () => { audioRef.current?.pause() }
+  }, [])
 
   // Real device check
   useEffect(() => {
@@ -665,6 +707,9 @@ function InterviewPageInner() {
   }
 
   const handlePreCheckComplete = useCallback(() => {
+    // 사용자 제스처 안에서 오디오 요소를 미리 활성화(자동재생 잠금 해제) — 첫 질문 TTS가 막히지 않도록.
+    if (!audioRef.current) audioRef.current = new Audio()
+    audioRef.current.play().then(() => audioRef.current?.pause()).catch(() => {})
     setState("countdown")
   }, [])
 
@@ -742,6 +787,7 @@ function InterviewPageInner() {
       stage={searchParams?.get("stage") || undefined}
       onEnd={handleInterviewEnd}
       stream={mediaStream}
+      playQuestionAudio={playQuestionAudio}
     />
   )
 }
