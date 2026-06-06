@@ -1089,15 +1089,9 @@ function DebatePageInner() {
                       <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${gazeRatio}%` }} />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <div className="rounded-lg border border-border bg-background p-1.5 text-center">
-                      <div className="text-sm font-bold text-foreground">{gazeOffCount}</div>
-                      <div className="text-[9px] text-muted-foreground">시선이탈</div>
-                    </div>
-                    <div className="rounded-lg border border-border bg-background p-1.5 text-center">
-                      <div className="text-sm font-bold text-foreground">{blinkCount}</div>
-                      <div className="text-[9px] text-muted-foreground">깜빡임</div>
-                    </div>
+                  <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                    <div className="text-sm font-bold text-foreground">{gazeOffCount}</div>
+                    <div className="text-[9px] text-muted-foreground">시선이탈</div>
                   </div>
                 </div>
               </AnalysisPanel>
