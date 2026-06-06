@@ -22,6 +22,7 @@ import {
   AlertCircle,
   User,
   Clock,
+  Lock,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -116,7 +117,6 @@ function DebatePageInner() {
   const [awaitingEval, setAwaitingEval] = useState(false)
   const prevEvalTurnIdRef = useRef<number | null>(null) // 재시도 폴링에서 무시할 직전 평가 턴 id
   const shownEvalIdRef = useRef<number | null>(null) // 마지막으로 노출한 평가 턴 id
-  const chatEndRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const playedTurnIds = useRef<Set<number>>(new Set())
   // 새로 도착한 AI 턴 TTS를 순차 재생하기 위한 큐. 종료 단계처럼 AI 턴이 2개 연속 올 때 모두 들리게 한다.
@@ -133,6 +133,12 @@ function DebatePageInner() {
     : null
   const { transcript: sttTranscript, audioLevel: sttAudioLevel, feedback: sttFeedback } =
     useDebateSTT({ sessionId, round: currentRound, stream: mediaStream, active: recording })
+
+  // 화자별 최신 발언 — 카드 하단 자막/상단 면접관 배너에 사용 (latestTurns는 오래된→최신 순)
+  const reversedTurns = debateState?.latestTurns ? [...debateState.latestTurns].reverse() : []
+  const latestInterviewerTurn = reversedTurns.find(t => t.speakerType === "AI_INTERVIEWER")
+  const latestCompetitorTurn = reversedTurns.find(t => t.speakerType === "AI_COMPETITOR")
+  const latestUserTurn = reversedTurns.find(t => t.speakerType === "USER")
 
   // 쿼리스트링 누락/오류 시 대시보드로 (모달을 거치지 않은 직접 접근)
   useEffect(() => {
@@ -200,10 +206,6 @@ function DebatePageInner() {
     return () => { cancelled = true }
   }, [phase, sessionId, pollTrigger])
 
-  // Auto scroll chat
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [debateState?.latestTurns])
 
   // 세션 변경 및 언마운트 시 오디오 정지 + 재생 기록/큐 초기화
   useEffect(() => {
@@ -767,9 +769,24 @@ function DebatePageInner() {
               </div>
 
               {/* Video Section — AI 경쟁자 (왼쪽) / 내 카메라 (오른쪽) */}
-              <div className="mb-3 grid grid-cols-2 gap-2 sm:gap-3">
+              {/* 면접관(사회자) 멘트 — 상단 배너 */}
+              {latestInterviewerTurn && (
+                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-900/20">
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">면접관</span>
+                    <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600">{roundLabel[latestInterviewerTurn.round] ?? latestInterviewerTurn.round}</Badge>
+                  </div>
+                  <p className="text-sm leading-relaxed text-foreground">{latestInterviewerTurn.content}</p>
+                </div>
+              )}
+
+              {/* 화자 카드 — 상대(왼쪽) / 나(오른쪽). 말하는 쪽에 보더 글로우 */}
+              <div className="mb-2 grid grid-cols-2 gap-2 sm:gap-3">
                 {/* AI 경쟁자 */}
-                <div className="relative flex flex-col items-center justify-center gap-1.5 rounded-xl border border-border/50 bg-secondary/30 py-3 sm:py-4">
+                <div className={cn(
+                  "relative flex h-28 flex-col items-center justify-center gap-1.5 rounded-xl border bg-secondary/30 transition-all sm:h-36",
+                  polling && !debateState?.waitingForUser ? "border-primary/60 ring-2 ring-primary/20" : "border-border/50"
+                )}>
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary border border-border/50 text-base font-bold text-foreground sm:h-14 sm:w-14 sm:text-lg">
                     {selectedPersona?.name?.slice(0, 1) ?? "A"}
                   </div>
@@ -788,16 +805,25 @@ function DebatePageInner() {
                 </div>
 
                 {/* 내 카메라 */}
-                <div className="relative overflow-hidden rounded-xl border border-border/50 bg-secondary/30">
+                <div className={cn(
+                  "relative h-28 overflow-hidden rounded-xl border bg-secondary/30 transition-all sm:h-36",
+                  recording ? "border-rose-500/70 ring-2 ring-rose-500/20" : "border-border/50"
+                )}>
                   {mediaStream ? (
                     <>
-                      <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" style={{ minHeight: "90px" }} />
+                      <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" />
                       <div className="absolute bottom-2 left-2 rounded-full bg-background/80 px-2 py-0.5">
                         <p className="text-[10px] font-medium text-foreground">나 · {selectedStance === "PRO" ? "찬성" : "반대"}</p>
                       </div>
+                      {recording && (
+                        <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-rose-500/90 px-2 py-0.5">
+                          <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                          <span className="text-[10px] font-medium text-white">REC</span>
+                        </div>
+                      )}
                     </>
                   ) : (
-                    <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2">
+                    <div className="flex h-full flex-col items-center justify-center gap-2">
                       <User className="h-8 w-8 text-muted-foreground/40" />
                       <p className="text-[10px] text-muted-foreground">카메라 없음</p>
                     </div>
@@ -805,66 +831,48 @@ function DebatePageInner() {
                 </div>
               </div>
 
-              {/* Chat Area */}
-              <div className="flex-1 space-y-3 overflow-y-auto rounded-lg border border-border/50 bg-card p-4">
-                {debateState?.latestTurns.map((turn) => {
-                  const isUser = turn.speakerType === "USER"
-                  const isInterviewer = turn.speakerType === "AI_INTERVIEWER"
-
-                  // 면접관 말 — 중앙 배너 스타일
-                  if (isInterviewer) {
-                    return (
-                      <div key={turn.id} className="flex justify-center">
-                        <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 sm:max-w-[90%] sm:px-4 sm:py-3 dark:border-amber-800/40 dark:bg-amber-900/20">
-                          <div className="mb-1.5 flex items-center justify-center gap-2">
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">면접관</span>
-                            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600">{roundLabel[turn.round] ?? turn.round}</Badge>
-                          </div>
-                          <p className="text-center text-sm text-foreground leading-relaxed">{turn.content}</p>
-                        </div>
-                      </div>
+              {/* 발언 자막 — 각 화자 카드 바로 아래. 실전 모드는 숨김(내 발언은 녹음 중에만 라이브) */}
+              <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 sm:gap-3">
+                {/* 상대 발언 */}
+                <div className="min-h-0 overflow-y-auto rounded-xl border border-border/50 bg-card p-3">
+                  {isPractice ? (
+                    latestCompetitorTurn?.content ? (
+                      <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{latestCompetitorTurn.content}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">아직 발언이 없습니다</p>
                     )
-                  }
+                  ) : (
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Lock className="h-3 w-3 shrink-0" /> 실전 모드 · 발언은 종료 후 리포트에서
+                    </p>
+                  )}
+                </div>
 
-                  return (
-                    <div
-                      key={turn.id}
-                      className={`flex ${isUser ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[85%] rounded-2xl px-3 py-2.5 sm:max-w-[75%] sm:px-4 sm:py-3 ${
-                          isUser
-                            ? "bg-primary text-white"
-                            : "bg-secondary text-foreground"
-                        }`}
-                      >
-                        <div className="mb-1 flex items-center gap-2">
-                          <span className="text-xs font-medium opacity-70">
-                            {isUser ? "나" : (selectedPersona?.name ?? "상대방")}
-                          </span>
-                          {turn.round && (
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] ${isUser ? "border-white/30 text-white/70" : ""}`}
-                            >
-                              {roundLabel[turn.round] ?? turn.round}
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm whitespace-pre-wrap">{turn.content}</p>
-                      </div>
-                    </div>
-                  )
-                })}
-
-                {pollTimeout && !debateState?.waitingForUser && (
-                  <div className="flex justify-center">
-                    <p className="text-xs text-muted-foreground">응답이 지연되고 있습니다. 잠시만 기다려주세요.</p>
-                  </div>
-                )}
-
-                <div ref={chatEndRef} />
+                {/* 내 발언 — 녹음 중 라이브 STT, 그 외엔 최신 발언(연습만) */}
+                <div className="min-h-0 overflow-y-auto rounded-xl border border-border/50 bg-card p-3">
+                  {recording ? (
+                    sttTranscript ? (
+                      <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{sttTranscript}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">말씀해 주세요…</p>
+                    )
+                  ) : isPractice ? (
+                    latestUserTurn?.content ? (
+                      <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{latestUserTurn.content}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">아직 발언이 없습니다</p>
+                    )
+                  ) : (
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Lock className="h-3 w-3 shrink-0" /> 실전 모드 · 발언은 종료 후 리포트에서
+                    </p>
+                  )}
+                </div>
               </div>
+
+              {pollTimeout && !debateState?.waitingForUser && (
+                <p className="mt-2 text-center text-xs text-muted-foreground">응답이 지연되고 있습니다. 잠시만 기다려주세요.</p>
+              )}
 
               {/* Input Area */}
               {phase === "debating" && debateState?.waitingForUser && (
@@ -925,12 +933,7 @@ function DebatePageInner() {
                     </div>
                   ) : (
                     <>
-                      {/* 실시간 트랜스크립트 */}
-                      {sttTranscript && (
-                        <div className="rounded-lg border border-border/50 bg-secondary/30 px-4 py-3 text-sm text-foreground min-h-12">
-                          {sttTranscript}
-                        </div>
-                      )}
+                      {/* 실시간 트랜스크립트는 내 카메라 하단 자막에서 표시 (중복 제거) */}
                       {/* 실시간 STT 피드백 — 연습 모드에서만 (실전은 종료 후 리포트에서 한 번에) */}
                       {isPractice && sttFeedback && (
                         <p className="text-xs text-amber-500 px-1">{sttFeedback}</p>
