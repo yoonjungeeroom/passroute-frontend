@@ -13,17 +13,13 @@ import {
   Trophy,
   Mic,
   MicOff,
-  Camera,
-  Volume2,
-  CheckCircle2,
-  XCircle,
   RotateCcw,
   ArrowRight,
-  AlertCircle,
   User,
   Clock,
   Lock,
 } from "lucide-react"
+import { PreCheckScreen } from "@/components/pre-check-screen"
 import { cn } from "@/lib/utils"
 
 interface DeviceStatus {
@@ -97,7 +93,7 @@ function DebatePageInner() {
     audioInput: "checking",
   })
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null)
-  const preCheckVideoRef = useRef<HTMLVideoElement>(null)
+  const [retestKey, setRetestKey] = useState(0)
   const debateVideoRef = useRef<HTMLVideoElement>(null)
 
   // Setup state (선택값은 모달에서 쿼리스트링으로 전달받음)
@@ -476,14 +472,7 @@ function DebatePageInner() {
 
     checkDevices()
     return () => { cancelled = true; audioCtx?.close() }
-  }, [phase, topicId])
-
-  // 사전점검 비디오 ref 연결
-  useEffect(() => {
-    if (preCheckVideoRef.current && mediaStream) {
-      preCheckVideoRef.current.srcObject = mediaStream
-    }
-  }, [mediaStream])
+  }, [phase, topicId, retestKey])
 
   // 토론 중 카메라 self-view
   useEffect(() => {
@@ -641,155 +630,24 @@ function DebatePageInner() {
     HARD: "어려움",
   }
 
-  // Pre-check helper
-  const allPassed =
-    deviceStatus.camera === "connected" &&
-    deviceStatus.microphone === "connected" &&
-    deviceStatus.faceDetected === "detected" &&
-    deviceStatus.audioInput === "detected"
-
-  const getStatusIcon = (status: string) => {
-    if (status === "connected" || status === "detected") return <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-    if (status === "error" || status === "not-detected") return <XCircle className="h-4 w-4 text-rose-400" />
-    return <div className="h-4 w-4 animate-pulse rounded-full bg-muted-foreground/50" />
-  }
-
-  const getStatusText = (status: string) => {
-    if (status === "connected" || status === "detected") return "정상"
-    if (status === "error" || status === "not-detected") return "미연결"
-    return "확인 중..."
-  }
-
   const handleRetest = () => {
     mediaStream?.getTracks().forEach(t => t.stop())
     setMediaStream(null)
     setDeviceStatus({ camera: "checking", microphone: "checking", faceDetected: "checking", audioInput: "checking" })
-    setPhase("precheck")
+    setRetestKey(k => k + 1)
   }
 
   // Pre-check 전체화면
   if (phase === "precheck") {
-    const statusItems = [
-      { icon: Camera, label: "카메라 연결 상태", status: deviceStatus.camera },
-      { icon: Mic, label: "마이크 연결 상태", status: deviceStatus.microphone },
-      { icon: User, label: "얼굴 인식 여부", status: deviceStatus.faceDetected },
-      { icon: Volume2, label: "음성 입력 감지", status: deviceStatus.audioInput },
-    ]
     return (
-      <div className="flex min-h-screen flex-col bg-background">
-        <header className="flex items-center justify-between border-b border-border/50 px-4 py-4 sm:px-6">
-          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground shrink-0" onClick={() => router.push("/dashboard")}>
-            <ChevronLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">대시보드로 돌아가기</span>
-          </Button>
-          <h1 className="text-base font-semibold text-foreground sm:text-lg">토론 면접 사전 점검</h1>
-          <div className="hidden w-[160px] sm:block" />
-        </header>
-        <main className="flex flex-1 items-center justify-center p-6">
-          <div className="flex w-full max-w-3xl flex-col gap-6">
-            <div className="space-y-3">
-              <div className="relative mx-auto aspect-video max-w-2xl overflow-hidden rounded-2xl border border-border/50 bg-secondary/50">
-                {mediaStream ? (
-                  <>
-                    <video ref={preCheckVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                      <svg width="180" height="240" viewBox="0 0 180 240" fill="none" className="opacity-60">
-                        <ellipse cx="90" cy="95" rx="70" ry="85"
-                          stroke={deviceStatus.faceDetected === "detected" ? "#22c55e" : "#ef4444"}
-                          strokeWidth="2" strokeDasharray="8 4" fill="none" />
-                        <path d="M20 240 Q20 190 90 180 Q160 190 160 240"
-                          stroke={deviceStatus.faceDetected === "detected" ? "#22c55e" : "#ef4444"}
-                          strokeWidth="2" strokeDasharray="8 4" fill="none" />
-                      </svg>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="relative">
-                      <div className="h-48 w-40 rounded-full border-2 border-dashed border-primary/50" />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <User className="h-20 w-20 text-muted-foreground/30" />
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-background/80 px-3 py-1.5 backdrop-blur-sm">
-                  <div className={cn("h-2 w-2 rounded-full", mediaStream ? "animate-pulse bg-rose-500" : "bg-muted-foreground")} />
-                  <span className="text-xs font-medium text-foreground">{mediaStream ? "LIVE" : "OFF"}</span>
-                </div>
-              </div>
-              <p className="text-center text-sm text-muted-foreground">
-                {mediaStream ? "얼굴을 중앙에 맞추고 말씀해 주세요" : "카메라 권한을 허용해주세요"}
-              </p>
-            </div>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {statusItems.map((item, i) => (
-                  <div key={i} className="flex flex-col items-center gap-2 rounded-xl border border-border/30 bg-card p-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                      <item.icon className="h-5 w-5 text-primary" />
-                    </div>
-                    <span className="text-xs font-medium text-foreground text-center">{item.label}</span>
-                    <div className="flex items-center gap-1.5">
-                      {getStatusIcon(item.status)}
-                      <span className={cn("text-xs font-medium",
-                        item.status === "connected" || item.status === "detected" ? "text-emerald-400" :
-                        item.status === "error" || item.status === "not-detected" ? "text-rose-400" : "text-muted-foreground"
-                      )}>{getStatusText(item.status)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-center gap-3 rounded-xl border border-border/30 bg-card p-4">
-                {allPassed ? (
-                  <>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20">
-                      <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-foreground">모든 점검이 완료되었습니다</p>
-                      <p className="text-sm text-muted-foreground">토론을 시작할 준비가 되었어요</p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/20">
-                      <AlertCircle className="h-5 w-5 text-amber-400" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-foreground">점검이 진행 중입니다</p>
-                      <p className="text-sm text-muted-foreground">카메라 앞에서 말씀해 주세요</p>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="flex gap-3">
-                <Button variant="outline" className="flex-1 gap-1.5 border-border/50" onClick={handleRetest}>
-                  <RotateCcw className="h-4 w-4" />
-                  다시 테스트
-                </Button>
-                <Button
-                  className="flex-1 gap-1.5"
-                  disabled={!allPassed || creating}
-                  onClick={handleCreateSession}
-                >
-                  {creating ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      토론 준비 중...
-                    </>
-                  ) : (
-                    <>
-                      토론 시작
-                      <ArrowRight className="h-4 w-4" />
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </main>
-      </div>
+      <PreCheckScreen
+        deviceStatus={deviceStatus}
+        stream={mediaStream}
+        onRetest={handleRetest}
+        onComplete={handleCreateSession}
+        onBack={() => router.push("/dashboard")}
+        title="토론 면접 사전 점검"
+      />
     )
   }
 
