@@ -164,11 +164,11 @@ function DebatePageInner() {
   const { transcript: sttTranscript, wpm: sttWpm, fillerCount: sttFillerCount, silenceSec: sttSilenceSec, audioLevel: sttAudioLevel, feedback: sttFeedback } =
     useDebateSTT({ sessionId, round: currentRound, stream: mediaStream, active: recording })
 
-  // 실시간 얼굴 분석 (토론 진행 중 활성)
+  // 실시간 얼굴 분석 — 녹음 중일 때만 활성 (1:1면접과 동일)
   const { gazeRatio, blinkCount, gazeOffCount } = useFaceAnalysis({
     sessionId: sessionId ?? 0,
     videoRef: debateVideoRef,
-    active: phase === "debating" && sessionId !== null,
+    active: recording && sessionId !== null,
   })
 
   // 면접관 최신 멘트 — 공개된 AI_INTERVIEWER 턴만 대상(상단 배너용). latestTurns는 오래된→최신 순.
