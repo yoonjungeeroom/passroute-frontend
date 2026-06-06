@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, Suspense } from "react"
+import { useState, useEffect, useRef, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { MobileHeader } from "@/components/dashboard/mobile-header"
@@ -119,6 +119,9 @@ function DebatePageInner() {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const playedTurnIds = useRef<Set<number>>(new Set())
+  // 새로 도착한 AI 턴 TTS를 순차 재생하기 위한 큐. 종료 단계처럼 AI 턴이 2개 연속 올 때 모두 들리게 한다.
+  const audioQueueRef = useRef<string[]>([])
+  const isPlayingRef = useRef(false)
 
   // STT
   const [recording, setRecording] = useState(false)
@@ -202,34 +205,59 @@ function DebatePageInner() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [debateState?.latestTurns])
 
-  // 세션 변경 및 언마운트 시 오디오 정지 + 재생 기록 초기화
+  // 세션 변경 및 언마운트 시 오디오 정지 + 재생 기록/큐 초기화
   useEffect(() => {
     playedTurnIds.current.clear()
+    audioQueueRef.current = []
+    isPlayingRef.current = false
     return () => {
-      audioRef.current?.pause()
+      // cleanup 이후 큐의 다음 오디오가 이어 재생되지 않도록 큐를 비우고 onended를 해제한다.
+      // 단, audioRef 요소 자체는 null로 버리지 않는다 — handleCreateSession의 사용자 제스처로
+      // 자동재생 잠금이 풀린 단일 요소라, 새로 만들면(세션 생성 직후 cleanup 포함) 자동재생이 다시 차단된다.
+      audioQueueRef.current = []
+      isPlayingRef.current = false
+      if (audioRef.current) {
+        audioRef.current.onended = null
+        audioRef.current.pause()
+      }
     }
   }, [sessionId])
 
-  // TTS 자동 재생 — audioUrl 있는 새 AI 턴만
-  useEffect(() => {
-    if (!debateState?.latestTurns) return
-    const newAudioTurn = [...debateState.latestTurns]
-      .reverse()
-      .find(
-        (t) =>
-          t.speakerType !== "USER" &&
-          t.audioUrl &&
-          !playedTurnIds.current.has(t.id)
-      )
-    if (!newAudioTurn || !newAudioTurn.audioUrl) return
-    playedTurnIds.current.add(newAudioTurn.id)
+  // 큐의 다음 TTS를 재생. 재생 끝나면(onended) 다음 것으로 이어진다.
+  const playNextInQueue = useCallback(() => {
     // handleCreateSession에서 활성화해 둔 단일 오디오 요소를 재사용 (자동재생 차단 방지)
     const audio = audioRef.current ?? (audioRef.current = new Audio())
+    const nextUrl = audioQueueRef.current.shift()
+    if (!nextUrl) {
+      isPlayingRef.current = false
+      return
+    }
+    isPlayingRef.current = true
+    audio.onended = () => playNextInQueue()
     audio.pause()
-    audio.src = newAudioTurn.audioUrl
+    audio.src = nextUrl
     audio.currentTime = 0
-    audio.play().catch((e) => console.warn("[debate] TTS 자동재생 실패:", e))
-  }, [debateState?.latestTurns])
+    audio.play().catch((e) => {
+      console.warn("[debate] TTS 자동재생 실패:", e)
+      // 재생 실패 시에도 다음 큐로 진행 (한 턴 실패가 이후 턴 재생을 막지 않도록)
+      playNextInQueue()
+    })
+  }, [])
+
+  // TTS 자동 재생 — audioUrl 있는 새 AI 턴을 도착 순서대로 큐에 넣어 순차 재생.
+  // 종료 단계: 상대 CLOSING + 면접관 MODERATION이 유저 턴 없이 한 번에 와도 둘 다 재생된다.
+  useEffect(() => {
+    if (!debateState?.latestTurns) return
+    const newTurns = debateState.latestTurns.filter(
+      (t) => t.speakerType !== "USER" && t.audioUrl && !playedTurnIds.current.has(t.id)
+    )
+    if (newTurns.length === 0) return
+    for (const t of newTurns) {
+      playedTurnIds.current.add(t.id)
+      audioQueueRef.current.push(t.audioUrl as string)
+    }
+    if (!isPlayingRef.current) playNextInQueue()
+  }, [debateState?.latestTurns, playNextInQueue])
 
   const handleCreateSession = async () => {
     if (isNaN(topicId) || isNaN(personaId) || !stanceParam) return

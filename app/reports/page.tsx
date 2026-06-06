@@ -285,7 +285,12 @@ export default function ReportsPage() {
                           </div>
                         </div>
                       ) : expandedDebateReport ? (
-                        <DebateReportView report={expandedDebateReport} />
+                        <DebateReportView
+                          report={expandedDebateReport}
+                          compact
+                          onReplay={() => router.push("/dashboard")}
+                          onDetail={() => router.push(`/reports/debate/${report.domainId}`)}
+                        />
                       ) : expandedReport ? (
                         <InterviewReportView
                           report={expandedReport}
