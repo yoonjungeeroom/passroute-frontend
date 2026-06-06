@@ -47,6 +47,7 @@ import {
   type DebateTurn,
   type DebateRound,
   type DebateBranchChoice,
+  type SpeakerType,
 } from "@/lib/api/debate"
 import { ApiError } from "@/lib/api/client"
 import { useDebateSTT } from "@/hooks/use-debate-stt"
@@ -67,6 +68,9 @@ const roundLabel: Record<DebateRound, string> = {
 }
 
 type Phase = "precheck" | "prep" | "debating" | "ending"
+
+// 채팅 로그 한 줄. 상대 발언은 백엔드 턴(key="c-<id>"), 내 발언은 확정 시 FE가 직접 추가(key="u-<seq>").
+type ChatMessage = { key: string; speaker: "USER" | "AI_COMPETITOR"; content: string }
 
 function DebatePageInner() {
   const router = useRouter()
@@ -132,10 +136,12 @@ function DebatePageInner() {
   const [revealedTurnIds, setRevealedTurnIds] = useState<Set<number>>(new Set())
   // 공개 큐가 비워지는 동안 true — 입력창/분기 버튼을 잠깐 가려 새 턴이 다 공개된 뒤 노출되게 한다.
   const [revealing, setRevealing] = useState(false)
-  // 채팅 로그 — 공개된 상대(AI_COMPETITOR)/내(USER) 발언이 시간순(id 오름차순)으로 쌓인다.
-  // 면접관(AI_INTERVIEWER)은 채팅에 넣지 않고 상단 배너에만 표시. latestTurns가 최근 N개 윈도우라도
-  // 밀려난 발언이 사라지지 않도록 공개 시점에 자체 누적한다.
-  const [chatTurns, setChatTurns] = useState<DebateTurn[]>([])
+  // 채팅 로그 — 발언이 시간순으로 쌓인다(삽입 순서 = 시간순). 면접관은 채팅에 넣지 않고 상단 배너에만.
+  // 상대 발언은 공개 시점에 백엔드 턴으로 누적, 내 발언은 "확정" 시 FE가 한 번만 추가(중복 방지).
+  const [chatTurns, setChatTurns] = useState<ChatMessage[]>([])
+  const userMsgSeqRef = useRef(0) // 내 발언 버블의 안정 key 생성용
+  // 현재 공개 중인 턴의 화자 — 상대 카드 "발언 중" 표시를 화자에 맞게 켜기 위함(면접관 cue 땐 끔).
+  const [revealingSpeaker, setRevealingSpeaker] = useState<SpeakerType | null>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
 
   // STT
@@ -153,6 +159,14 @@ function DebatePageInner() {
   const latestInterviewerTurn = debateState?.latestTurns
     ? [...debateState.latestTurns].reverse().find(t => t.speakerType === "AI_INTERVIEWER" && revealedTurnIds.has(t.id))
     : undefined
+
+  // 상대 카드 "발언 중" — 상대 턴을 공개 중이거나, (아무것도 공개 안 하는 채로) AI 응답 생성 폴링 중일 때만.
+  // 면접관 cue를 공개 중일 때(revealingSpeaker=AI_INTERVIEWER)는 켜지 않는다.
+  const competitorSpeaking =
+    revealingSpeaker === "AI_COMPETITOR" ||
+    (polling && !debateState?.waitingForUser && !revealing)
+  // 내 발언 미확정 버블 표시 — 말하는 중(라이브)이거나, 중지 후 확정/평가 대기 동안 그대로 유지(사라지지 않게).
+  const showPendingBubble = recording || (isPractice && (sttReady || awaitingEval || !!feedbackTurn))
 
   // 쿼리스트링 누락/오류 시 대시보드로 (모달을 거치지 않은 직접 접근)
   useEffect(() => {
@@ -229,7 +243,9 @@ function DebatePageInner() {
     isRevealingRef.current = false
     setRevealedTurnIds(new Set())
     setRevealing(false)
+    setRevealingSpeaker(null)
     setChatTurns([])
+    userMsgSeqRef.current = 0
     return () => {
       // cleanup 이후 큐의 다음 턴이 이어 공개/재생되지 않도록 큐·타이머·onended를 모두 해제.
       // 단, audioRef 요소 자체는 null로 버리지 않는다 — handleCreateSession의 사용자 제스처로
@@ -245,15 +261,12 @@ function DebatePageInner() {
     }
   }, [sessionId])
 
-  // 채팅 로그에 발언 누적 — 상대(AI_COMPETITOR)/내(USER) 발언만, id 기준 dedupe + 오름차순 유지.
-  const appendChat = useCallback((turns: DebateTurn[]) => {
-    const chat = turns.filter(t => t.speakerType === "USER" || t.speakerType === "AI_COMPETITOR")
-    if (chat.length === 0) return
-    setChatTurns(prev => {
-      const seen = new Set(prev.map(t => t.id))
-      const add = chat.filter(t => !seen.has(t.id))
-      return add.length ? [...prev, ...add].sort((a, b) => a.id - b.id) : prev
-    })
+  // 채팅 로그에 상대 발언 누적 — 백엔드 AI_COMPETITOR 턴만(면접관 제외, 내 발언은 확정 시 별도 추가).
+  // 삽입 순서가 곧 시간순. key로 dedupe해 같은 턴이 두 번 들어가지 않게 한다.
+  const appendCompetitorTurn = useCallback((turn: DebateTurn) => {
+    if (turn.speakerType !== "AI_COMPETITOR") return
+    const key = `c-${turn.id}`
+    setChatTurns(prev => prev.some(m => m.key === key) ? prev : [...prev, { key, speaker: "AI_COMPETITOR", content: turn.content }])
   }, [])
 
   // 공개 큐에서 다음 턴 하나를 공개(화면 표시) + TTS 재생.
@@ -267,17 +280,19 @@ function DebatePageInner() {
     if (!turn) {
       isRevealingRef.current = false
       setRevealing(false)
+      setRevealingSpeaker(null)
       return
     }
     isRevealingRef.current = true
     setRevealing(true)
+    setRevealingSpeaker(turn.speakerType)
     // 이 턴을 공개 (화면에 노출) + 채팅 로그에 누적(상대 발언만, 면접관은 배너)
     setRevealedTurnIds(prev => {
       const next = new Set(prev)
       next.add(turn.id)
       return next
     })
-    appendChat([turn])
+    appendCompetitorTurn(turn)
 
     if (turn.audioUrl) {
       // handleCreateSession에서 활성화해 둔 단일 오디오 요소를 재사용 (자동재생 차단 방지)
@@ -297,12 +312,13 @@ function DebatePageInner() {
       // 오디오 없는 턴은 잠깐 보여주고 다음으로 (동시 노출 방지용 최소 간격)
       advanceTimerRef.current = setTimeout(revealNext, 1200)
     }
-  }, [appendChat])
+  }, [appendCompetitorTurn])
 
   // 새로 도착한 턴을 공개 큐에 적재.
   // - AI 턴(상대/면접관): id 오름차순으로 큐에 쌓아 하나씩 공개 → 상대 발언 + 면접관 cue가
   //   한 응답에 같이 와도 동시에 뜨지 않고 순서대로 표시+재생된다. 클로징 TTS 누락도 같이 해결.
-  // - USER 턴: 본인 발화라 즉시 공개.
+  // - USER 턴: 즉시 공개 처리만(혹시 모를 재진입 방지). 채팅 버블은 백엔드 턴이 아니라
+  //   "확정" 시 FE가 한 번만 추가하므로(시도/확정 중복 방지) 여기선 채팅에 넣지 않는다.
   useEffect(() => {
     if (!debateState?.latestTurns) return
     const incoming = debateState.latestTurns.filter(t => !playedTurnIds.current.has(t.id))
@@ -316,7 +332,6 @@ function DebatePageInner() {
         userTurns.forEach(t => next.add(t.id))
         return next
       })
-      appendChat(userTurns) // 내 발언은 즉시 채팅에 누적
     }
 
     const aiTurns = incoming
@@ -325,7 +340,7 @@ function DebatePageInner() {
     if (aiTurns.length === 0) return
     revealQueueRef.current.push(...aiTurns)
     if (!isRevealingRef.current) revealNext()
-  }, [debateState?.latestTurns, revealNext, appendChat])
+  }, [debateState?.latestTurns, revealNext])
 
   // 새 발언/라이브 STT가 쌓이면 채팅 맨 아래로 자동 스크롤
   useEffect(() => {
@@ -504,7 +519,13 @@ function DebatePageInner() {
     setSubmitting(true)
     setSubmitNotice(null)
     try {
+      const committed = sttTranscript.trim()
       await submitDebateTurn(sessionId, sttTranscript, true)
+      // 확정된 내 발언을 채팅에 한 번만 추가(연습만 표시, 실전은 잠금). 백엔드 USER 턴은 채팅에 안 넣어 중복 방지.
+      if (isPractice && committed) {
+        const key = `u-${userMsgSeqRef.current++}`
+        setChatTurns(prev => [...prev, { key, speaker: "USER", content: committed }])
+      }
       setSttReady(false)
       setRecording(false)
       setFeedbackTurn(null)
@@ -874,7 +895,7 @@ function DebatePageInner() {
                 {/* AI 경쟁자 */}
                 <div className={cn(
                   "relative flex h-28 flex-col items-center justify-center gap-1.5 rounded-xl border bg-secondary/30 transition-all sm:h-36",
-                  revealing || (polling && !debateState?.waitingForUser) ? "border-primary/60 ring-2 ring-primary/20" : "border-border/50"
+                  competitorSpeaking ? "border-primary/60 ring-2 ring-primary/20" : "border-border/50"
                 )}>
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary border border-border/50 text-base font-bold text-foreground sm:h-14 sm:w-14 sm:text-lg">
                     {selectedPersona?.name?.slice(0, 1) ?? "A"}
@@ -883,7 +904,7 @@ function DebatePageInner() {
                     <p className="text-xs font-semibold text-foreground">{selectedPersona?.name ?? "AI 경쟁자"}</p>
                     <p className="text-[10px] text-muted-foreground">{selectedStance === "PRO" ? "반대" : "찬성"}</p>
                   </div>
-                  {(revealing || (polling && !debateState?.waitingForUser)) && (
+                  {competitorSpeaking && (
                     <div className="absolute bottom-2 left-0 right-0 flex justify-center">
                       <div className="flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5">
                         <Loader2 className="h-2.5 w-2.5 animate-spin text-muted-foreground" />
@@ -924,13 +945,13 @@ function DebatePageInner() {
                   면접관은 상단 배너에만. 실전 모드는 잠금(내용은 종료 후 리포트). */}
               <div ref={chatScrollRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-xl border border-border/50 bg-card p-3">
                 {isPractice ? (
-                  chatTurns.length === 0 && !recording ? (
+                  chatTurns.length === 0 && !showPendingBubble ? (
                     <p className="text-xs text-muted-foreground">아직 발언이 없습니다</p>
                   ) : (
-                    chatTurns.map((t) => {
-                      const isMe = t.speakerType === "USER"
+                    chatTurns.map((m) => {
+                      const isMe = m.speaker === "USER"
                       return (
-                        <div key={t.id} className={cn("flex", isMe ? "justify-end" : "justify-start")}>
+                        <div key={m.key} className={cn("flex", isMe ? "justify-end" : "justify-start")}>
                           <div className="flex max-w-[80%] flex-col gap-0.5">
                             <span className={cn("text-[10px] text-muted-foreground", isMe ? "text-right" : "text-left")}>
                               {isMe ? "나" : (selectedPersona?.name ?? "AI 경쟁자")}
@@ -941,26 +962,27 @@ function DebatePageInner() {
                                 ? "rounded-br-sm bg-primary text-primary-foreground"
                                 : "rounded-bl-sm bg-secondary text-foreground"
                             )}>
-                              {t.content}
+                              {m.content}
                             </div>
                           </div>
                         </div>
                       )
                     })
                   )
-                ) : !recording ? (
+                ) : !showPendingBubble ? (
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Lock className="h-3 w-3 shrink-0" /> 실전 모드 · 발언은 종료 후 리포트에서
                   </p>
                 ) : null}
 
-                {/* 녹음 중 라이브 STT — 아직 미확정인 내 발언(오른쪽, 옅은 색). 양 모드 공통 */}
-                {recording && (
+                {/* 내 미확정 발언 — 말하는 중(라이브)이거나 중지 후 확정/평가 대기 동안 그대로 유지(오른쪽, 옅은 색).
+                    "확정" 시 위 chatTurns에 정식 버블로 한 번만 합류하므로 중복되지 않는다. */}
+                {showPendingBubble && (
                   <div className="flex justify-end">
                     <div className="flex max-w-[80%] flex-col gap-0.5">
-                      <span className="text-right text-[10px] text-muted-foreground">나 · 입력 중</span>
+                      <span className="text-right text-[10px] text-muted-foreground">{recording ? "나 · 입력 중" : "나"}</span>
                       <div className="rounded-2xl rounded-br-sm bg-primary/60 px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">
-                        {sttTranscript || "말씀해 주세요…"}
+                        {sttTranscript || (recording ? "말씀해 주세요…" : "")}
                       </div>
                     </div>
                   </div>
