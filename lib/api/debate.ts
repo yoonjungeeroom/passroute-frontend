@@ -48,6 +48,9 @@ export interface DebateTurn {
   evalImprovements?: string | null
 }
 
+// 반박 라운드 종료 후 사용자 분기 선택. rebut_again = 반박 한 번 더, finish = 토론 마무리.
+export type DebateBranchChoice = "rebut_again" | "finish"
+
 export interface DebateStateResponse {
   sessionId: number
   mode: DebateMode
@@ -56,6 +59,13 @@ export interface DebateStateResponse {
   waitingForUser: boolean
   version: number
   latestTurns: DebateTurn[]
+  // 분기 선택 대기(REBUTTAL_1_DECISION). 발언 대기(waitingForUser)와 별개로,
+  // 이 값이 true면 POST /turn은 거부되고 두 버튼 중 하나를 골라 POST /branch를 호출해야 한다.
+  // 백엔드 확정: awaitingDecision=true는 REBUTTAL_1_DECISION 한 곳에서만, 항상
+  // availableChoices=["rebut_again","finish"]. (REBUTTAL_2 후엔 DECISION 없이 마무리 cue로 자동 진행 —
+  // finish만 오는 케이스는 실제로 없지만 availableChoices 기반 렌더라 와도 무해.)
+  awaitingDecision?: boolean
+  availableChoices?: DebateBranchChoice[]
 }
 
 export interface SuggestedTopicCandidate {
@@ -173,6 +183,19 @@ export async function submitDebateTurn(sessionId: number, content: string, commi
     `/debate/${sessionId}/turn`,
     { method: "POST", body: JSON.stringify({ content, commit }) },
     "토론 턴 제출에 실패했습니다"
+  )
+}
+
+/**
+ * 반박 라운드 종료 후 분기 선택 전송.
+ * - REBUTTAL_1_DECISION(awaitingDecision=true) 상태에서만 유효, 그 외엔 백엔드가 에러.
+ * - rebut_again → REBUTTAL_2 진행, finish → 바로 마무리.
+ */
+export async function submitDebateBranch(sessionId: number, choice: DebateBranchChoice): Promise<void> {
+  return apiFetch<void>(
+    `/debate/${sessionId}/branch`,
+    { method: "POST", body: JSON.stringify({ choice }) },
+    "토론 분기 선택에 실패했습니다"
   )
 }
 
