@@ -161,7 +161,7 @@ function DebatePageInner() {
   const currentRound = debateState?.currentState
     ? (STATE_TO_ROUND[debateState.currentState] ?? null)
     : null
-  const { transcript: sttTranscript, wpm: sttWpm, fillerCount: sttFillerCount, audioLevel: sttAudioLevel, feedback: sttFeedback } =
+  const { transcript: sttTranscript, wpm: sttWpm, fillerCount: sttFillerCount, silenceSec: sttSilenceSec, audioLevel: sttAudioLevel, feedback: sttFeedback } =
     useDebateSTT({ sessionId, round: currentRound, stream: mediaStream, active: recording })
 
   // 실시간 얼굴 분석 (토론 진행 중 활성)
@@ -1062,23 +1062,15 @@ function DebatePageInner() {
             {/* 실시간 분석 패널 (xl 이상에서만 표시) */}
             <div className="hidden xl:flex w-48 shrink-0 flex-col">
               <AnalysisPanel title="실시간 분석">
-                <div className="mb-3 flex justify-center">
-                  <div className="relative h-20 w-20 overflow-hidden rounded-lg border border-border bg-background">
-                    {mediaStream ? (
-                      <video autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]"
-                        ref={(el) => { if (el && mediaStream) el.srcObject = mediaStream }} />
-                    ) : (
-                      <User className="absolute inset-0 m-auto h-10 w-10 text-muted-foreground/30" />
-                    )}
-                    <div className="absolute inset-1 rounded-md border border-dashed border-primary/30" />
-                  </div>
-                </div>
-
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">음성</div>
-                <div className="mb-3 grid grid-cols-2 gap-1.5">
+                <div className="mb-3 grid grid-cols-3 gap-1.5">
                   <div className="rounded-lg border border-border bg-background p-1.5 text-center">
                     <div className="text-sm font-bold text-foreground">{sttWpm > 0 ? Math.round(sttWpm) : "--"}</div>
                     <div className="text-[9px] text-muted-foreground">WPM</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                    <div className="text-sm font-bold text-foreground">{sttSilenceSec > 0 ? sttSilenceSec.toFixed(1) : "--"}</div>
+                    <div className="text-[9px] text-muted-foreground">침묵(초)</div>
                   </div>
                   <div className="rounded-lg border border-border bg-background p-1.5 text-center">
                     <div className="text-sm font-bold text-foreground">{sttFillerCount > 0 ? sttFillerCount : "--"}</div>

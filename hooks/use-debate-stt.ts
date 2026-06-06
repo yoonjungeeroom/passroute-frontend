@@ -14,6 +14,7 @@ interface UseDebateSTTReturn {
   transcript: string
   wpm: number
   fillerCount: number
+  silenceSec: number
   audioLevel: number
   feedback: string | null
 }
@@ -24,6 +25,7 @@ export function useDebateSTT({ sessionId, round, stream, active }: UseDebateSTTP
   const [transcript, setTranscript] = useState("")
   const [wpm, setWpm] = useState(0)
   const [fillerCount, setFillerCount] = useState(0)
+  const [silenceSec, setSilenceSec] = useState(0)
   const [audioLevel, setAudioLevel] = useState(0)
   const [feedback, setFeedback] = useState<string | null>(null)
 
@@ -119,6 +121,8 @@ export function useDebateSTT({ sessionId, round, stream, active }: UseDebateSTTP
               setTranscript(prev => prev ? `${prev} ${data.text}` : data.text)
               if (data.wpm) setWpm(data.wpm)
               if (data.filler_count) setFillerCount(c => c + (data.filler_count as number))
+            } else if (data.status === "silence") {
+              if (data.silence_sec !== undefined) setSilenceSec(data.silence_sec)
             } else if (data.status === "feedback") {
               setFeedback(data.message || null)
               clearTimeout(feedbackTimerRef.current)
@@ -157,5 +161,5 @@ export function useDebateSTT({ sessionId, round, stream, active }: UseDebateSTTP
     }
   }, [active])
 
-  return { transcript, wpm, fillerCount, audioLevel, feedback }
+  return { transcript, wpm, fillerCount, silenceSec, audioLevel, feedback }
 }

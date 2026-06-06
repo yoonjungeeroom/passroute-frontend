@@ -251,18 +251,6 @@ function LiveInterviewScreen({
         {/* Left Column: 통합 분석 패널 */}
         <div className="hidden w-56 shrink-0 flex-col gap-3 xl:flex">
             <AnalysisPanel title="실시간 분석">
-              <div className="mb-3 flex justify-center">
-                <div className="relative h-20 w-20 overflow-hidden rounded-lg border border-border bg-background">
-                  {stream ? (
-                    <video autoPlay playsInline muted className="h-full w-full object-cover"
-                      ref={(el) => { if (el && stream) el.srcObject = stream }} />
-                  ) : (
-                    <User className="absolute inset-0 m-auto h-10 w-10 text-muted-foreground/30" />
-                  )}
-                  <div className="absolute inset-1 rounded-md border border-dashed border-primary/30" />
-                </div>
-              </div>
-
               <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">음성</div>
               <div className="mb-3 grid grid-cols-3 gap-1.5">
                 <div className="rounded-lg border border-border bg-background p-1.5 text-center">
