@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { PreCheckScreen } from "@/components/pre-check-screen"
 import { cn } from "@/lib/utils"
+import { useFaceAnalysis } from "@/hooks/use-face-analysis"
 
 interface DeviceStatus {
   camera: "checking" | "connected" | "error"
@@ -67,6 +68,18 @@ type Phase = "precheck" | "prep" | "debating" | "ending"
 
 // 채팅 로그 한 줄. 상대 발언은 백엔드 턴(key="c-<id>"), 내 발언은 확정 시 FE가 직접 추가(key="u-<seq>").
 type ChatMessage = { key: string; speaker: "USER" | "AI_COMPETITOR"; content: string }
+
+function AnalysisPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col rounded-xl border border-border bg-card">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+      </div>
+      <div className="flex-1 p-3">{children}</div>
+    </div>
+  )
+}
 
 function DebatePageInner() {
   const router = useRouter()
@@ -148,8 +161,15 @@ function DebatePageInner() {
   const currentRound = debateState?.currentState
     ? (STATE_TO_ROUND[debateState.currentState] ?? null)
     : null
-  const { transcript: sttTranscript, audioLevel: sttAudioLevel, feedback: sttFeedback } =
+  const { transcript: sttTranscript, wpm: sttWpm, fillerCount: sttFillerCount, audioLevel: sttAudioLevel, feedback: sttFeedback } =
     useDebateSTT({ sessionId, round: currentRound, stream: mediaStream, active: recording })
+
+  // 실시간 얼굴 분석 (토론 진행 중 활성)
+  const { gazeRatio, blinkCount, gazeOffCount } = useFaceAnalysis({
+    sessionId: sessionId ?? 0,
+    videoRef: debateVideoRef,
+    active: phase === "debating" && sessionId !== null,
+  })
 
   // 면접관 최신 멘트 — 공개된 AI_INTERVIEWER 턴만 대상(상단 배너용). latestTurns는 오래된→최신 순.
   const latestInterviewerTurn = debateState?.latestTurns
@@ -718,7 +738,8 @@ function DebatePageInner() {
           </div>
 
           {phase === "debating" || phase === "ending" ? (
-            <div className="flex flex-col" style={{ height: "calc(100dvh - 160px)" }}>
+            <div className="flex gap-3" style={{ height: "calc(100dvh - 160px)" }}>
+            <div className="flex flex-1 flex-col min-w-0">
               {/* Topic Banner */}
               <div className="mb-3 rounded-lg border border-border/50 bg-card px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
@@ -1036,6 +1057,59 @@ function DebatePageInner() {
                   </Button>
                 </div>
               )}
+            </div>
+
+            {/* 실시간 분석 패널 (xl 이상에서만 표시) */}
+            <div className="hidden xl:flex w-48 shrink-0 flex-col">
+              <AnalysisPanel title="실시간 분석">
+                <div className="mb-3 flex justify-center">
+                  <div className="relative h-20 w-20 overflow-hidden rounded-lg border border-border bg-background">
+                    {mediaStream ? (
+                      <video autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]"
+                        ref={(el) => { if (el && mediaStream) el.srcObject = mediaStream }} />
+                    ) : (
+                      <User className="absolute inset-0 m-auto h-10 w-10 text-muted-foreground/30" />
+                    )}
+                    <div className="absolute inset-1 rounded-md border border-dashed border-primary/30" />
+                  </div>
+                </div>
+
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">음성</div>
+                <div className="mb-3 grid grid-cols-2 gap-1.5">
+                  <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                    <div className="text-sm font-bold text-foreground">{sttWpm > 0 ? Math.round(sttWpm) : "--"}</div>
+                    <div className="text-[9px] text-muted-foreground">WPM</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                    <div className="text-sm font-bold text-foreground">{sttFillerCount > 0 ? sttFillerCount : "--"}</div>
+                    <div className="text-[9px] text-muted-foreground">필러워드</div>
+                  </div>
+                </div>
+
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">영상</div>
+                <div className="space-y-2">
+                  <div>
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">시선 고정률</span>
+                      <span className="text-xs font-semibold text-foreground">{Math.round(gazeRatio)}%</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${gazeRatio}%` }} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                      <div className="text-sm font-bold text-foreground">{gazeOffCount}</div>
+                      <div className="text-[9px] text-muted-foreground">시선이탈</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                      <div className="text-sm font-bold text-foreground">{blinkCount}</div>
+                      <div className="text-[9px] text-muted-foreground">깜빡임</div>
+                    </div>
+                  </div>
+                </div>
+              </AnalysisPanel>
+            </div>
             </div>
           ) : null}
         </div>

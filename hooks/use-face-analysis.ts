@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, type RefObject } from "react"
 
 interface UseFaceAnalysisParams {
   sessionId: number
-  questionId: number
+  questionId?: number
   videoRef: RefObject<HTMLVideoElement | null>
   active: boolean
 }
@@ -43,13 +43,13 @@ export function useFaceAnalysis({ sessionId, questionId, videoRef, active }: Use
   }, [])
 
   useEffect(() => {
-    if (!active || !questionId) {
+    if (!active || !sessionId) {
       cleanup()
       return
     }
 
     const aiServerUrl = process.env.NEXT_PUBLIC_AI_WS_URL
-    const ws = new WebSocket(`${aiServerUrl}/ws/face/${sessionId}/${questionId}`)
+    const ws = new WebSocket(`${aiServerUrl}/ws/face/${sessionId}/${questionId ?? 0}`)
     wsRef.current = ws
 
     if (!canvasRef.current) {
