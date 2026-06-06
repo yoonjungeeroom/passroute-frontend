@@ -211,7 +211,15 @@ function DebatePageInner() {
     audioQueueRef.current = []
     isPlayingRef.current = false
     return () => {
-      audioRef.current?.pause()
+      // cleanup 이후 큐의 다음 오디오가 이어 재생되지 않도록 큐를 비우고 onended를 해제한다.
+      // 단, audioRef 요소 자체는 null로 버리지 않는다 — handleCreateSession의 사용자 제스처로
+      // 자동재생 잠금이 풀린 단일 요소라, 새로 만들면(세션 생성 직후 cleanup 포함) 자동재생이 다시 차단된다.
+      audioQueueRef.current = []
+      isPlayingRef.current = false
+      if (audioRef.current) {
+        audioRef.current.onended = null
+        audioRef.current.pause()
+      }
     }
   }, [sessionId])
 
