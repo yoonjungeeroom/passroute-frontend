@@ -55,7 +55,7 @@ export function PreCheckScreen({
     }
   }, [stream])
 
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(() => {
     if (!stream) return
     setPhase("recording")
     setProgress(0)
@@ -78,33 +78,36 @@ export function PreCheckScreen({
     let audioCtx: AudioContext | null = null
     let ws: WebSocket | null = null
 
-    try {
-      audioCtx = new AudioContext({ sampleRate: 48000 })
-      await audioCtx.audioWorklet.addModule("/audio-worklet-processor.js")
-      const source = audioCtx.createMediaStreamSource(stream)
-      const workletNode = new AudioWorkletNode(audioCtx, "pcm-processor", {
-        processorOptions: { sampleRate: audioCtx.sampleRate },
-      })
-      source.connect(workletNode)
-      workletNode.connect(audioCtx.destination)
+    // STT 설정은 비동기로 백그라운드에서 실행 (progress 타이머를 막지 않도록)
+    ;(async () => {
+      try {
+        audioCtx = new AudioContext({ sampleRate: 48000 })
+        await audioCtx.audioWorklet.addModule("/audio-worklet-processor.js")
+        const source = audioCtx.createMediaStreamSource(stream)
+        const workletNode = new AudioWorkletNode(audioCtx, "pcm-processor", {
+          processorOptions: { sampleRate: audioCtx.sampleRate },
+        })
+        source.connect(workletNode)
+        workletNode.connect(audioCtx.destination)
 
-      ws = new WebSocket(`${aiServerUrl}/ws/stt/1/1`)
-      ws.onopen = () => {
-        workletNode.port.onmessage = (e: MessageEvent) => {
-          if (ws?.readyState === WebSocket.OPEN) ws.send(e.data as ArrayBuffer)
-        }
-      }
-      ws.onmessage = (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data as string)
-          if (data.status === "completed" && data.text) {
-            sttAccumText += data.text as string
-            const keywords = ["안녕", "면접", "시작"]
-            if (keywords.every(k => sttAccumText.includes(k))) sttGotText = true
+        ws = new WebSocket(`${aiServerUrl}/ws/stt/1/1`)
+        ws.onopen = () => {
+          workletNode.port.onmessage = (e: MessageEvent) => {
+            if (ws?.readyState === WebSocket.OPEN) ws.send(e.data as ArrayBuffer)
           }
-        } catch { /* ignore */ }
-      }
-    } catch { /* AudioWorklet or WebSocket 실패 시 무시 */ }
+        }
+        ws.onmessage = (e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data as string)
+            if (data.status === "completed" && data.text) {
+              sttAccumText += data.text as string
+              const keywords = ["안녕", "면접", "시작"]
+              if (keywords.every(k => sttAccumText.includes(k))) sttGotText = true
+            }
+          } catch { /* ignore */ }
+        }
+      } catch { /* AudioWorklet or WebSocket 실패 시 무시 */ }
+    })()
 
     const startTime = Date.now()
 
