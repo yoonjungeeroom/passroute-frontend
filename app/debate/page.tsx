@@ -525,11 +525,13 @@ function DebatePageInner() {
   const handleBranch = async (choice: DebateBranchChoice) => {
     if (!sessionId || branchPending) return
     setBranchPending(choice)
+    setSubmitNotice(null)
     try {
       await submitDebateBranch(sessionId, choice)
       setPollTrigger(prev => prev + 1)
     } catch {
-      // keep buttons on error
+      // 실패 시 버튼 유지 + 안내(재시도 가능). DECISION 상태는 발화 입력 UI와 겹치지 않아 submitNotice 재사용 안전.
+      setSubmitNotice("분기 선택에 실패했습니다. 다시 시도해 주세요.")
     } finally {
       setBranchPending(null)
     }
@@ -1040,6 +1042,9 @@ function DebatePageInner() {
                     <p className="text-center text-sm text-muted-foreground">
                       {canRebutAgain ? "반박을 한 번 더 할까요, 토론을 마무리할까요?" : "토론을 마무리할까요?"}
                     </p>
+                    {submitNotice && (
+                      <p className="text-center text-xs text-rose-500">{submitNotice}</p>
+                    )}
                     <div className="flex items-center gap-2">
                       {canRebutAgain && (
                         <Button
