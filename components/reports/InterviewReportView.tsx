@@ -17,6 +17,8 @@ const ITEM_LABELS: Record<string, string> = {
   jobRelevance: "직무 적합성",
   accuracy: "정확성",
   depth: "답변 깊이",
+  authenticity: "진정성",
+  growth: "성장 가능성",
 }
 
 export function InterviewReportView({
