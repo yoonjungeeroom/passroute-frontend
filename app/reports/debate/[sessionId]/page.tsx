@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Loader2, ChevronLeft, RotateCcw, AlertCircle, Clock } from "lucide-react"
 import { getDebateReport } from "@/lib/api/reports"
 import { DebateReportView } from "@/components/reports/DebateReportView"
+import { DebateReportDetail } from "@/components/reports/DebateReportDetail"
 import type { DebateReportResponse } from "@/types/report"
 
 const POLL_INTERVAL_MS = 3000
@@ -72,7 +73,7 @@ function DebateReportContent() {
       <Sidebar />
       <main className="w-full overflow-auto lg:pl-64">
         <MobileHeader />
-        <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="px-4 py-8 sm:px-6 lg:px-8">
 
           {/* Header */}
           <div className="mb-6 flex items-center gap-3">
@@ -140,8 +141,17 @@ function DebateReportContent() {
             </div>
           )}
 
-          {/* 완료 */}
-          {status === "done" && report && <DebateReportView report={report} />}
+          {/* 완료 — 1:1 면접 상세와 동일한 2분할: 좌(요약, sticky) / 우(라운드별 피드백·전략·준비도) */}
+          {status === "done" && report && (
+            <div className="grid gap-6 lg:grid-cols-3 lg:items-start">
+              <div className="lg:sticky lg:top-8">
+                <DebateReportView report={report} compact />
+              </div>
+              <div className="lg:col-span-2">
+                <DebateReportDetail report={report} />
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>
