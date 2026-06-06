@@ -75,5 +75,19 @@ export async function getDebateReport(sessionId: number): Promise<DebateReportRe
   }
 
   const result = await response.json()
-  return result.data
+  const data = result.data
+  if (!data) return null
+
+  // 백엔드가 turnFeedback 내부 필드를 snake_case(round_type/weighted_score)로 내려보내는 경우 대비.
+  // 바깥은 camelCase인데 nested만 snake로 오는 불일치가 있어, camel/snake 양쪽 모두 수용해 정규화한다.
+  return {
+    ...data,
+    turnFeedback: Array.isArray(data.turnFeedback)
+      ? data.turnFeedback.map((tf: Record<string, unknown>) => ({
+          roundType: (tf.roundType ?? tf.round_type ?? "") as string,
+          weightedScore: (tf.weightedScore ?? tf.weighted_score) as number,
+          feedback: (tf.feedback ?? "") as string,
+        }))
+      : [],
+  }
 }
