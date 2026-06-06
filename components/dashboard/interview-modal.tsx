@@ -479,7 +479,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                         <div className={cn(
                           "flex h-10 w-10 items-center justify-center rounded-lg",
                           isSelected
-                            ? `${mode.color} text-white`
+                            ? "bg-primary text-white"
                             : "bg-secondary text-muted-foreground"
                         )}>
                           <Icon className="h-5 w-5" />
