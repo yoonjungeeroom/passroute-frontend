@@ -233,7 +233,7 @@ function LiveInterviewScreen({
       try {
         await endInterview(sessionId)
         const clip = await uploadWorstClip(sessionId)
-        if (clip) await saveWorstClip(sessionId, clip.url, clip.score)
+        if (clip) await saveWorstClip(sessionId, clip.url, clip.score, clip.questionId)
       } catch { /* ignore */ }
       onEnd()
     }

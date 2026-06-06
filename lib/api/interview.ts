@@ -76,10 +76,11 @@ export async function saveWorstClip(
   sessionId: number,
   videoUrl: string,
   clipScore: number,
+  questionId: number,
 ): Promise<void> {
   await apiFetch<void>(
     `/interview/sessions/${sessionId}/worst-clip`,
-    { method: "POST", body: JSON.stringify({ videoUrl, clipScore }) },
+    { method: "POST", body: JSON.stringify({ videoUrl, clipScore, questionId }) },
     "클립 저장에 실패했습니다"
   )
 }

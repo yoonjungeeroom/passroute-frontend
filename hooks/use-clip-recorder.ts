@@ -42,7 +42,7 @@ interface Params {
 }
 
 export interface UseClipRecorderReturn {
-  uploadWorstClip: (sessionId: number) => Promise<{ url: string; score: number } | null>
+  uploadWorstClip: (sessionId: number) => Promise<{ url: string; score: number; questionId: number } | null>
   isUploading: boolean
 }
 
@@ -128,7 +128,7 @@ export function useClipRecorder({
     }
   }, [active, stream])
 
-  const uploadWorstClip = useCallback(async (sessionId: number): Promise<{ url: string; score: number } | null> => {
+  const uploadWorstClip = useCallback(async (sessionId: number): Promise<{ url: string; score: number; questionId: number } | null> => {
     await stopPromiseRef.current
 
     if (clipsRef.current.length === 0) return null
@@ -143,7 +143,7 @@ export function useClipRecorder({
         headers: { "Content-Type": "video/webm" },
       })
       clipsRef.current = []
-      return { url: fileUrl, score: worst.score }
+      return { url: fileUrl, score: worst.score, questionId: worst.questionId }
     } catch {
       return null
     } finally {
