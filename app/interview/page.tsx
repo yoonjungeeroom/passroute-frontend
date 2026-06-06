@@ -249,8 +249,7 @@ function LiveInterviewScreen({
       {/* Main Grid */}
       <main className="flex flex-1 gap-3 overflow-hidden p-3">
         {/* Left Column: 통합 분석 패널 */}
-        {mode === "practice" && (
-          <div className="hidden w-56 shrink-0 flex-col gap-3 xl:flex">
+        <div className="hidden w-56 shrink-0 flex-col gap-3 xl:flex">
             <AnalysisPanel title="실시간 분석">
               <div className="mb-3 flex justify-center">
                 <div className="relative h-20 w-20 overflow-hidden rounded-lg border border-border bg-background">
@@ -304,7 +303,6 @@ function LiveInterviewScreen({
               </div>
             </AnalysisPanel>
           </div>
-        )}
 
         {/* Center Column: Video + Question */}
         <div className="flex flex-1 flex-col gap-3">
@@ -361,7 +359,7 @@ function LiveInterviewScreen({
                   <div className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
                   <span className="text-xs font-medium text-foreground">REC</span>
                 </div>
-                {mode === "practice" && (sttFeedback || faceFeedback) && (
+                {(sttFeedback || faceFeedback) && (
                   <div className="absolute left-3 right-3 top-12 z-10 animate-in fade-in slide-in-from-top-2 duration-300">
                     <div className="flex items-center gap-2 rounded-lg bg-amber-500/90 px-3 py-2 shadow backdrop-blur-sm">
                       <AlertCircle className="h-4 w-4 shrink-0 text-white" />
