@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
@@ -55,10 +55,22 @@ export function PreCheckScreen({
     }
   }, [stream])
 
+  // 진행률 바: phase가 "recording"일 때 setInterval로 독립 구동 (오디오 설정과 무관)
+  useEffect(() => {
+    if (phase !== "recording") return
+    setProgress(0)
+    const startTime = Date.now()
+    const id = setInterval(() => {
+      const elapsed = Date.now() - startTime
+      setProgress(Math.min(100, (elapsed / RECORDING_DURATION) * 100))
+      if (elapsed >= RECORDING_DURATION) clearInterval(id)
+    }, 50)
+    return () => clearInterval(id)
+  }, [phase])
+
   const startRecording = useCallback(() => {
     if (!stream) return
     setPhase("recording")
-    setProgress(0)
 
     if (!canvasRef.current) {
       canvasRef.current = document.createElement("canvas")
@@ -78,8 +90,8 @@ export function PreCheckScreen({
     let audioCtx: AudioContext | null = null
     let ws: WebSocket | null = null
 
-    // STT 설정은 비동기로 백그라운드에서 실행 (progress 타이머를 막지 않도록)
-    ;(async () => {
+    // STT 설정은 비동기로 백그라운드에서 실행 (RAF 타이머를 막지 않도록)
+    void (async () => {
       try {
         audioCtx = new AudioContext({ sampleRate: 48000 })
         await audioCtx.audioWorklet.addModule("/audio-worklet-processor.js")
@@ -113,7 +125,6 @@ export function PreCheckScreen({
 
     const tick = () => {
       const elapsed = Date.now() - startTime
-      setProgress(Math.min(100, (elapsed / RECORDING_DURATION) * 100))
 
       if (elapsed - lastFaceCheck > 300) {
         lastFaceCheck = elapsed
