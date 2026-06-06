@@ -39,12 +39,14 @@ import {
   startDebateSession,
   getDebateState,
   submitDebateTurn,
+  submitDebateBranch,
   endDebateSession,
   type DebateTopic,
   type DebatePersona,
   type DebateStateResponse,
   type DebateTurn,
   type DebateRound,
+  type DebateBranchChoice,
 } from "@/lib/api/debate"
 import { ApiError } from "@/lib/api/client"
 import { useDebateSTT } from "@/hooks/use-debate-stt"
@@ -106,6 +108,8 @@ function DebatePageInner() {
   const [sessionId, setSessionId] = useState<number | null>(null)
   const [debateState, setDebateState] = useState<DebateStateResponse | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  // 분기 선택(반박 한 번 더 / 마무리) 전송 중인 선택지. 어느 버튼에 스피너를 띄울지 구분용.
+  const [branchPending, setBranchPending] = useState<DebateBranchChoice | null>(null)
   const [polling, setPolling] = useState(false)
   const [pollTrigger, setPollTrigger] = useState(0)
   // 실전 모드 준비시간 카운트다운 (precheck → prep → debating)
@@ -180,8 +184,9 @@ function DebatePageInner() {
           setPhase("ending")
           return
         }
-        if (state.waitingForUser) {
-          // 사용자 턴이면 폴링 중단
+        if (state.waitingForUser || state.awaitingDecision) {
+          // 사용자 발언 차례거나 분기 선택(반박 추가/마무리) 대기면 폴링 중단.
+          // cue 상태(면접관 멘트 재생 중)는 둘 다 false → 폴링 계속하며 다음 상태로 진행.
           setPolling(false)
           waitStart = 0
           setPollTimeout(false)
@@ -514,6 +519,23 @@ function DebatePageInner() {
     pollEval()
     return () => { cancelled = true }
   }, [awaitingEval, sessionId])
+
+  // 반박 종료 후 분기 선택 전송 — rebut_again(반박 한 번 더) / finish(토론 마무리).
+  // 성공 시 폴링 재개 → 다음 cue/상태로 진행. 실패 시 버튼 유지(재시도 가능).
+  const handleBranch = async (choice: DebateBranchChoice) => {
+    if (!sessionId || branchPending) return
+    setBranchPending(choice)
+    setSubmitNotice(null)
+    try {
+      await submitDebateBranch(sessionId, choice)
+      setPollTrigger(prev => prev + 1)
+    } catch {
+      // 실패 시 버튼 유지 + 안내(재시도 가능). DECISION 상태는 발화 입력 UI와 겹치지 않아 submitNotice 재사용 안전.
+      setSubmitNotice("분기 선택에 실패했습니다. 다시 시도해 주세요.")
+    } finally {
+      setBranchPending(null)
+    }
+  }
 
   const handleEnd = async () => {
     if (!sessionId) return
@@ -1009,6 +1031,44 @@ function DebatePageInner() {
                   )}
                 </div>
               )}
+
+              {/* 분기 선택 — 반박 라운드 종료 후(REBUTTAL_1_DECISION). 발언이 아니라 버튼 선택.
+                  availableChoices에 rebut_again이 없으면(REBUTTAL_2 후) '토론 마무리'만 노출. */}
+              {phase === "debating" && debateState?.awaitingDecision && (() => {
+                const choices = debateState.availableChoices ?? ["rebut_again", "finish"]
+                const canRebutAgain = choices.includes("rebut_again")
+                return (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-center text-sm text-muted-foreground">
+                      {canRebutAgain ? "반박을 한 번 더 할까요, 토론을 마무리할까요?" : "토론을 마무리할까요?"}
+                    </p>
+                    {submitNotice && (
+                      <p className="text-center text-xs text-rose-500">{submitNotice}</p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      {canRebutAgain && (
+                        <Button
+                          variant="outline"
+                          className="flex-1 gap-1.5"
+                          disabled={branchPending !== null}
+                          onClick={() => handleBranch("rebut_again")}
+                        >
+                          {branchPending === "rebut_again" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                          반박 한 번 더
+                        </Button>
+                      )}
+                      <Button
+                        className="flex-1 gap-1.5"
+                        disabled={branchPending !== null}
+                        onClick={() => handleBranch("finish")}
+                      >
+                        {branchPending === "finish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                        토론 마무리
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Ending */}
               {phase === "ending" && (
