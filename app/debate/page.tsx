@@ -542,7 +542,11 @@ function DebatePageInner() {
     setSubmitNotice(null)
     try {
       const committed = sttTranscript.trim()
-      await submitDebateTurn(sessionId, sttTranscript, true)
+      // 연습모드 확정: 이미 평가된 시도 턴을 그대로 잠그기 위해 content를 비워 보낸다.
+      // (백엔드가 "새 발화 없음"으로 보고 기존 평가 턴을 재사용 → 패널에서 본 점수가 리포트와 일치, 재평가 1회 절약)
+      // 실전모드는 시도 단계가 없으므로 전사를 그대로 전송해 평가+잠금.
+      const contentToSend = isPractice && feedbackTurn ? "" : sttTranscript
+      await submitDebateTurn(sessionId, contentToSend, true)
       // 확정된 내 발언을 채팅에 한 번만 추가(연습만 표시, 실전은 잠금). 백엔드 USER 턴은 채팅에 안 넣어 중복 방지.
       if (isPractice && committed) {
         const key = `u-${userMsgSeqRef.current++}`
