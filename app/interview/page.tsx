@@ -223,12 +223,14 @@ function LiveInterviewScreen({
       setFollowUpQuestion(null)
       setAnswerState("waiting")
       setAnswerTime(0)
+      setReAnswerCount(0)
       return
     }
     if (currentQuestionIndex < totalQuestions - 1) {
       setCurrentQuestionIndex((prev) => prev + 1)
       setAnswerState("waiting")
       setAnswerTime(0)
+      setReAnswerCount(0)
     } else {
       try {
         await endInterview(sessionId)
