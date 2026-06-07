@@ -15,6 +15,7 @@ import {
   MicOff,
   RotateCcw,
   ArrowRight,
+  SkipForward,
   User,
   Clock,
   Lock,
@@ -329,6 +330,18 @@ function DebatePageInner() {
       advanceTimerRef.current = setTimeout(revealNext, 1200)
     }
   }, [appendCompetitorTurn])
+
+  // 면접관/상대 발언 TTS를 끝까지 듣지 않고 건너뛴다 (연습·실전 공통).
+  // 텍스트(turn.content)는 revealNext 시점에 이미 화면에 노출돼 유지되고, 현재 오디오만 멈춘 뒤 다음 공개로 진행한다.
+  // audioUrl이 null인 턴(TTS 비활성/합성 실패)에서도 pause()는 무해하며 그대로 다음으로 넘어가 깨지지 않는다.
+  const handleSkipAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.onended = null
+      audioRef.current.onerror = null
+      audioRef.current.pause()
+    }
+    revealNext()
+  }, [revealNext])
 
   // 새로 도착한 턴을 공개 큐에 적재.
   // - AI 턴(상대/면접관): id 오름차순으로 큐에 쌓아 하나씩 공개 → 상대 발언 + 면접관 cue가
@@ -824,6 +837,16 @@ function DebatePageInner() {
                   )}
                 </div>
               </div>
+
+              {/* 음성 건너뛰기 — 면접관 오프닝/상대 발언 TTS를 끝까지 듣지 않고 진행. 텍스트는 그대로 유지된다. */}
+              {revealing && (
+                <div className="mb-2 flex justify-center">
+                  <Button variant="outline" size="sm" onClick={handleSkipAudio} className="gap-1.5 text-muted-foreground">
+                    <SkipForward className="h-3.5 w-3.5" />
+                    음성 건너뛰기
+                  </Button>
+                </div>
+              )}
 
               {/* 발언 채팅 로그 — 공개된 상대/내 발언이 카톡식으로 아래로 쌓인다(상대 왼쪽·내 발언 오른쪽).
                   면접관은 상단 배너에만. 실전 모드는 잠금(내용은 종료 후 리포트). */}
