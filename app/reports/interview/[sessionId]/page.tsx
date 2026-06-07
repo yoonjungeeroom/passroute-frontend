@@ -21,7 +21,7 @@ function InterviewReportContent() {
   const sessionId = Number(params.sessionId)
 
   const [report, setReport] = useState<InterviewReportResponse | null>(null)
-  const [worstClipUrl, setWorstClipUrl] = useState<string | null>(null)
+  const [worstClip, setWorstClip] = useState<{ videoUrl: string; clipReason: string | null } | null>(null)
   const [status, setStatus] = useState<"loading" | "done" | "error" | "timeout">("loading")
   const [retryCount, setRetryCount] = useState(0)
 
@@ -51,7 +51,7 @@ function InterviewReportContent() {
         } else {
           setReport(result)
           // 최악 클립은 별도 조회 (실패해도 무시)
-          getWorstClip(sessionId).then(url => { if (!cancelled) setWorstClipUrl(url) }).catch(() => {})
+          getWorstClip(sessionId).then(clip => { if (!cancelled) setWorstClip(clip) }).catch(() => {})
           setStatus("done")
         }
       } catch {
@@ -61,7 +61,7 @@ function InterviewReportContent() {
 
     setStatus("loading")
     setReport(null)
-    setWorstClipUrl(null)
+    setWorstClip(null)
     poll()
 
     return () => {
@@ -144,7 +144,7 @@ function InterviewReportContent() {
           {status === "done" && report && (
             <div className="grid gap-6 lg:grid-cols-3 lg:items-start">
               <div className="lg:sticky lg:top-8">
-                <InterviewReportView report={report} worstClipUrl={worstClipUrl} compact />
+                <InterviewReportView report={report} worstClipUrl={worstClip?.videoUrl} worstClipReason={worstClip?.clipReason} compact />
               </div>
               <div className="lg:col-span-2">
                 <InterviewReportDetail report={report} />

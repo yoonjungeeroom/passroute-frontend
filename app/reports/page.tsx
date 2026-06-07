@@ -58,7 +58,7 @@ export default function ReportsPage() {
   const [expandedReport, setExpandedReport] = useState<InterviewReportResponse | null>(null)
   const [expandedDebateReport, setExpandedDebateReport] = useState<DebateReportResponse | null>(null)
   const [expandedLoading, setExpandedLoading] = useState(false)
-  const [worstClipUrl, setWorstClipUrl] = useState<string | null>(null)
+  const [worstClip, setWorstClip] = useState<{ videoUrl: string; clipReason: string | null } | null>(null)
   const [selectedType, setSelectedType] = useState<"all" | "technical" | "personality" | "debate">("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [page, setPage] = useState(0)
@@ -88,25 +88,25 @@ export default function ReportsPage() {
       setExpandedId(null)
       setExpandedReport(null)
       setExpandedDebateReport(null)
-      setWorstClipUrl(null)
+      setWorstClip(null)
       return
     }
     setExpandedId(report.domainId)
     setExpandedLoading(true)
     setExpandedReport(null)
     setExpandedDebateReport(null)
-    setWorstClipUrl(null)
+    setWorstClip(null)
     try {
       if (report.reportType === "debate") {
         const debateReport = await getDebateReport(report.domainId)
         setExpandedDebateReport(debateReport)
       } else {
-        const [interviewReport, clipUrl] = await Promise.all([
+        const [interviewReport, clip] = await Promise.all([
           getInterviewReport(report.domainId),
           getWorstClip(report.domainId).catch(() => null),
         ])
         setExpandedReport(interviewReport)
-        setWorstClipUrl(clipUrl)
+        setWorstClip(clip)
       }
     } catch {
       setExpandedReport(null)
@@ -294,7 +294,8 @@ export default function ReportsPage() {
                       ) : expandedReport ? (
                         <InterviewReportView
                           report={expandedReport}
-                          worstClipUrl={worstClipUrl}
+                          worstClipUrl={worstClip?.videoUrl}
+                          worstClipReason={worstClip?.clipReason}
                           onReplay={report.selfIntroId != null ? () => router.push(`/dashboard?startInterview=${report.selfIntroId}`) : undefined}
                           onDetail={() => router.push(`/reports/interview/${report.domainId}`)}
                         />
