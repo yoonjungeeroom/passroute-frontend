@@ -28,8 +28,28 @@ function MetricCard({ label, value, unit }: { label: string; value: string | num
   )
 }
 
+// 문항 라벨 계산: 꼬리질문(follow_up)은 직전 메인 질문의 하위 번호로 표기 (Q1, Q1-1, Q2 ...).
+// 백엔드가 questionFeedback를 실제 진행 순서로 내려준다는 전제.
+function buildQuestionLabels(questionFeedback: InterviewReportResponse["questionFeedback"]): string[] {
+  const labels: string[] = []
+  let main = 0
+  let sub = 0
+  for (const q of questionFeedback ?? []) {
+    if (q.follow_up) {
+      sub += 1
+      labels.push(`${main || 1}-${sub}`)
+    } else {
+      main += 1
+      sub = 0
+      labels.push(`${main}`)
+    }
+  }
+  return labels
+}
+
 export function InterviewReportDetail({ report }: { report: InterviewReportResponse }) {
   const { voiceAnalysis, faceAnalysis, questionFeedback, weaknesses, keyWeakness, finalAdvice, readinessComment } = report
+  const questionLabels = buildQuestionLabels(questionFeedback)
 
   return (
     <div className="space-y-6">
@@ -82,12 +102,17 @@ export function InterviewReportDetail({ report }: { report: InterviewReportRespo
             문항별 피드백
           </h4>
           <div className="space-y-4">
-            {questionFeedback.map((q) => (
+            {questionFeedback.map((q, i) => (
               <div key={q.question_index} className="rounded-lg border border-border/50 bg-background p-4 transition-colors hover:border-primary/30">
                 <div className="flex items-start justify-between gap-5">
                   <div className="min-w-0 flex-1">
                     <div className="mb-2 flex items-center gap-2">
-                      <span className="text-xs font-semibold text-muted-foreground">Q{q.question_index}</span>
+                      <span className="text-xs font-semibold text-muted-foreground">Q{questionLabels[i]}</span>
+                      {q.follow_up && (
+                        <Badge variant="outline" className="text-[10px] font-medium border-amber-500/30 bg-amber-500/10 text-amber-700">
+                          꼬리질문
+                        </Badge>
+                      )}
                       <Badge variant="outline" className="text-[10px] font-medium border-primary/30 bg-primary/10 text-primary">
                         {q.question_type}
                       </Badge>

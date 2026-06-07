@@ -27,6 +27,9 @@ export interface QuestionFeedback {
   feedback: string
   star_comment: string | null
   voice_comment: string | null
+  // 꼬리질문 여부. 백엔드가 questionFeedback를 실제 진행 순서로 내려주며, true면 직전 메인 질문의 하위(Q1-1)로 표기.
+  // 구버전 리포트엔 없을 수 있어 optional.
+  follow_up?: boolean
 }
 
 export interface InterviewReportResponse {
