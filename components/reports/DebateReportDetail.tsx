@@ -4,15 +4,8 @@ import { Badge } from "@/components/ui/badge"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faBrain, faChartLine, faComments, faClipboardCheck } from "@fortawesome/free-solid-svg-icons"
 import { cn } from "@/lib/utils"
+import { ROUND_LABEL, localizeRounds } from "@/lib/debate-rounds"
 import type { DebateReportResponse } from "@/types/report"
-
-const ROUND_LABEL: Record<string, string> = {
-  OPENING: "개회",
-  REBUTTAL_1: "반론1",
-  REBUTTAL_2: "반론2",
-  CLOSING: "마무리",
-  MODERATION: "사회",
-}
 
 // 100점 기준 점수 색상 (문항별 피드백과 동일 규칙)
 function scoreColor(pct: number) {
@@ -39,7 +32,7 @@ export function DebateReportDetail({ report }: { report: DebateReportResponse })
                         {ROUND_LABEL[tf.roundType] ?? tf.roundType}
                       </Badge>
                     </div>
-                    <p className="text-sm leading-relaxed text-muted-foreground">{tf.feedback}</p>
+                    <p className="text-sm leading-relaxed text-muted-foreground">{localizeRounds(tf.feedback)}</p>
                   </div>
                   <div className="shrink-0 text-center">
                     <div className={cn("text-3xl font-bold leading-none", scoreColor(tf.weightedScore))}>
@@ -61,7 +54,7 @@ export function DebateReportDetail({ report }: { report: DebateReportResponse })
             <FontAwesomeIcon icon={faBrain} className="h-3.5 w-3.5" />
             전략 분석
           </h4>
-          <p className="text-sm text-muted-foreground">{report.strategyAnalysis}</p>
+          <p className="text-sm text-muted-foreground">{localizeRounds(report.strategyAnalysis)}</p>
         </div>
       )}
 
@@ -72,7 +65,7 @@ export function DebateReportDetail({ report }: { report: DebateReportResponse })
             <FontAwesomeIcon icon={faComments} className="h-3.5 w-3.5 text-primary" />
             토론 준비도
           </h4>
-          <p className="text-sm text-muted-foreground">{report.debateReadinessComment}</p>
+          <p className="text-sm text-muted-foreground">{localizeRounds(report.debateReadinessComment)}</p>
         </div>
       )}
 
@@ -83,7 +76,7 @@ export function DebateReportDetail({ report }: { report: DebateReportResponse })
             <FontAwesomeIcon icon={faClipboardCheck} className="h-3.5 w-3.5 text-primary" />
             최종 조언
           </h4>
-          <p className="text-sm leading-relaxed text-muted-foreground">{report.finalAdvice}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">{localizeRounds(report.finalAdvice)}</p>
         </div>
       )}
     </div>
