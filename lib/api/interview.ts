@@ -60,3 +60,27 @@ export async function getWorstClip(sessionId: number): Promise<string> {
     "클립 조회에 실패했습니다"
   )
 }
+
+export async function getPresignedUrl(
+  sessionId: number,
+  questionId: number,
+): Promise<{ uploadUrl: string; fileUrl: string }> {
+  return apiFetch<{ uploadUrl: string; fileUrl: string }>(
+    `/interview/sessions/${sessionId}/clip-upload-url?questionId=${questionId}`,
+    { method: "GET" },
+    "업로드 URL 조회에 실패했습니다"
+  )
+}
+
+export async function saveWorstClip(
+  sessionId: number,
+  videoUrl: string,
+  clipScore: number,
+  questionId: number,
+): Promise<void> {
+  await apiFetch<void>(
+    `/interview/sessions/${sessionId}/worst-clip`,
+    { method: "POST", body: JSON.stringify({ videoUrl, clipScore, questionId }) },
+    "클립 저장에 실패했습니다"
+  )
+}
