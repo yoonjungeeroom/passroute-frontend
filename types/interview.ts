@@ -46,6 +46,7 @@ export interface AnswerSubmission {
   }
   videoUrl?: string
   clipScore?: number
+  clipReason?: string
 }
 
 export interface AnswerProgressResponse {

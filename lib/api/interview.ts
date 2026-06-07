@@ -53,8 +53,8 @@ export async function endInterview(sessionId: number): Promise<void> {
   }
 }
 
-export async function getWorstClip(sessionId: number): Promise<string> {
-  return apiFetch<string>(
+export async function getWorstClip(sessionId: number): Promise<{ videoUrl: string; clipReason: string | null } | null> {
+  return apiFetch<{ videoUrl: string; clipReason: string | null } | null>(
     `/interview/sessions/${sessionId}/worst-clip`,
     { method: "GET" },
     "클립 조회에 실패했습니다"
@@ -77,10 +77,11 @@ export async function saveWorstClip(
   videoUrl: string,
   clipScore: number,
   questionId: number,
+  clipReason: string,
 ): Promise<void> {
   await apiFetch<void>(
     `/interview/sessions/${sessionId}/worst-clip`,
-    { method: "POST", body: JSON.stringify({ videoUrl, clipScore, questionId }) },
+    { method: "POST", body: JSON.stringify({ videoUrl, clipScore, questionId, clipReason }) },
     "클립 저장에 실패했습니다"
   )
 }

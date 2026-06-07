@@ -8,6 +8,13 @@ import { SkillBar } from "@/components/reports/SkillBar"
 import { cn } from "@/lib/utils"
 import type { InterviewReportResponse } from "@/types/report"
 
+const CLIP_REASON_LABELS: Record<string, string> = {
+  pace: "말하기 속도가 적절하지 않았던 구간이에요",
+  silence: "침묵이 길었던 구간이에요",
+  filler: "추임새가 많았던 구간이에요",
+  gaze: "시선 처리가 아쉬웠던 구간이에요",
+}
+
 const ITEM_LABELS: Record<string, string> = {
   relevance: "관련성",
   logic: "논리성",
@@ -24,12 +31,14 @@ const ITEM_LABELS: Record<string, string> = {
 export function InterviewReportView({
   report,
   worstClipUrl,
+  worstClipReason,
   onReplay,
   onDetail,
   compact = false,
 }: {
   report: InterviewReportResponse
   worstClipUrl?: string | null
+  worstClipReason?: string | null
   onReplay?: () => void
   onDetail?: () => void
   compact?: boolean
@@ -74,6 +83,9 @@ export function InterviewReportView({
       {worstClipUrl && (
         <div className="rounded-xl border border-border/50 p-4">
           <h4 className="mb-2 text-sm font-semibold text-foreground">개선 필요 구간</h4>
+          {worstClipReason && CLIP_REASON_LABELS[worstClipReason] && (
+            <p className="mb-2 text-sm text-muted-foreground">{CLIP_REASON_LABELS[worstClipReason]}</p>
+          )}
           <video src={worstClipUrl} controls className="w-full rounded-lg" />
         </div>
       )}
