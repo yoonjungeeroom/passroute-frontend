@@ -707,6 +707,11 @@ function DebatePageInner() {
             준비 시간 동안 논리를 정리하세요.<br />
             시간이 끝나면 자동으로 토론이 시작됩니다.
           </p>
+          {/* 준비시간 건너뛰기 — 카운트다운을 0으로 만들어 기존 시작 로직(useEffect)을 즉시 트리거 */}
+          <Button onClick={() => setPrepRemaining(0)} className="gap-1.5">
+            건너뛰고 바로 시작
+            <ArrowRight className="h-4 w-4" />
+          </Button>
         </div>
       </div>
     )
