@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { RotateCcw, BarChart2 } from "lucide-react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faStar, faArrowTrendUp, faLightbulb } from "@fortawesome/free-solid-svg-icons"
+import { localizeRounds } from "@/lib/debate-rounds"
 import type { DebateReportResponse } from "@/types/report"
 
 export function DebateReportView({
@@ -25,7 +26,7 @@ export function DebateReportView({
           <FontAwesomeIcon icon={faLightbulb} className="h-3.5 w-3.5 text-amber-500" />
           종합 평가
         </h4>
-        <p className="text-sm leading-relaxed text-muted-foreground">{report.overall}</p>
+        <p className="text-sm leading-relaxed text-muted-foreground">{localizeRounds(report.overall)}</p>
       </div>
 
       {/* 강점 & 개선점 */}
@@ -35,14 +36,14 @@ export function DebateReportView({
             <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
             강점
           </h4>
-          <p className="text-sm text-muted-foreground">{report.strengths}</p>
+          <p className="text-sm text-muted-foreground">{localizeRounds(report.strengths)}</p>
         </div>
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
           <h4 className="mb-2 text-sm font-semibold text-amber-600 flex items-center gap-2">
             <FontAwesomeIcon icon={faArrowTrendUp} className="h-3.5 w-3.5" />
             개선점
           </h4>
-          <p className="text-sm text-muted-foreground">{report.improvements}</p>
+          <p className="text-sm text-muted-foreground">{localizeRounds(report.improvements)}</p>
         </div>
       </div>
 
