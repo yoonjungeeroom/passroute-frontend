@@ -70,6 +70,15 @@ type Phase = "precheck" | "prep" | "debating" | "ending"
 // 채팅 로그 한 줄. 상대 발언은 백엔드 턴(key="c-<id>"), 내 발언은 확정 시 FE가 직접 추가(key="u-<seq>").
 type ChatMessage = { key: string; speaker: "USER" | "AI_COMPETITOR"; content: string }
 
+// 문장 단위로 쪼개되 join("")하면 원문이 복원되도록 구두점+공백을 함께 묶는다.
+function splitSentences(text: string): string[] {
+  const sentences = text.match(/[^.!?]+[.!?]*\s*/g)
+  return sentences && sentences.length > 1 ? sentences : [text]
+}
+
+// 상대 발언을 TTS 재생 진행률에 맞춰 문장 단위로 점진 노출하기 위한 상태.
+type StreamingReveal = { key: string; sentences: string[]; visibleCount: number }
+
 function AnalysisPanel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col rounded-xl border border-border bg-card">
@@ -152,6 +161,9 @@ function DebatePageInner() {
   const userMsgSeqRef = useRef(0) // 내 발언 버블의 안정 key 생성용
   // 현재 공개 중인 턴의 화자 — 상대 카드 "발언 중" 표시를 화자에 맞게 켜기 위함(면접관 cue 땐 끔).
   const [revealingSpeaker, setRevealingSpeaker] = useState<SpeakerType | null>(null)
+  // 상대 발언 버블을 TTS 재생 진행률에 맞춰 문장 단위로 점진 노출하기 위한 상태.
+  // null이면 모든 버블이 chatTurns의 전체 content를 그대로 보여준다(면접관 멘트는 항상 이 경로).
+  const [streamingReveal, setStreamingReveal] = useState<StreamingReveal | null>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
 
   // STT
@@ -261,6 +273,7 @@ function DebatePageInner() {
     setRevealedTurnIds(new Set())
     setRevealing(false)
     setRevealingSpeaker(null)
+    setStreamingReveal(null)
     setChatTurns([])
     userMsgSeqRef.current = 0
     return () => {
@@ -273,8 +286,10 @@ function DebatePageInner() {
       if (audioRef.current) {
         audioRef.current.onended = null
         audioRef.current.onerror = null
+        audioRef.current.ontimeupdate = null
         audioRef.current.pause()
       }
+      setStreamingReveal(null)
     }
   }, [sessionId])
 
@@ -291,13 +306,18 @@ function DebatePageInner() {
   const revealNext = useCallback(() => {
     // 이전 단계의 예약 타이머/이벤트핸들러를 먼저 정리해 중복 진행을 막는다.
     if (advanceTimerRef.current) { clearTimeout(advanceTimerRef.current); advanceTimerRef.current = null }
-    if (audioRef.current) { audioRef.current.onended = null; audioRef.current.onerror = null }
+    if (audioRef.current) {
+      audioRef.current.onended = null
+      audioRef.current.onerror = null
+      audioRef.current.ontimeupdate = null
+    }
 
     const turn = revealQueueRef.current.shift()
     if (!turn) {
       isRevealingRef.current = false
       setRevealing(false)
       setRevealingSpeaker(null)
+      setStreamingReveal(null)
       return
     }
     isRevealingRef.current = true
@@ -311,18 +331,34 @@ function DebatePageInner() {
     })
     appendCompetitorTurn(turn)
 
+    // 상대 발언은 TTS 재생 진행률(currentTime/duration)에 비례해 문장 단위로 점진 노출한다.
+    // 면접관 멘트·오디오 없는 턴·한 문장짜리는 기존처럼 전체를 즉시 노출(streamingReveal=null → chatTurns의 content 그대로 표시).
+    const streamKey = `c-${turn.id}`
+    const sentences = turn.speakerType === "AI_COMPETITOR" ? splitSentences(turn.content) : []
+    const streaming = turn.speakerType === "AI_COMPETITOR" && !!turn.audioUrl && sentences.length > 1
+    setStreamingReveal(streaming ? { key: streamKey, sentences, visibleCount: 1 } : null)
+
     if (turn.audioUrl) {
       // handleCreateSession에서 활성화해 둔 단일 오디오 요소를 재사용 (자동재생 차단 방지)
       const audio = audioRef.current ?? (audioRef.current = new Audio())
-      audio.onended = () => revealNext()
+      const finishStreaming = () => setStreamingReveal(prev => (prev?.key === streamKey ? null : prev))
+      audio.onended = () => { finishStreaming(); revealNext() }
       // 재생 중 디코드/로드 오류로 ended가 안 와도 막히지 않도록 (입력창이 큐에 묶여 있으므로 중요)
-      audio.onerror = () => { advanceTimerRef.current = setTimeout(revealNext, 600) }
+      audio.onerror = () => { finishStreaming(); advanceTimerRef.current = setTimeout(revealNext, 600) }
+      // 재생 진행률에 맞춰 노출할 문장 수를 늘려간다 — 음성이 빨리 끝나면 텍스트도 따라잡고, onended에서 전체 노출로 마무리.
+      audio.ontimeupdate = () => {
+        if (!streaming || !isFinite(audio.duration) || audio.duration <= 0) return
+        const ratio = audio.currentTime / audio.duration
+        const target = Math.min(sentences.length, Math.max(1, Math.ceil(ratio * sentences.length)))
+        setStreamingReveal(prev => (prev && prev.key === streamKey && target > prev.visibleCount ? { ...prev, visibleCount: target } : prev))
+      }
       audio.pause()
       audio.src = turn.audioUrl
       audio.currentTime = 0
       audio.play().catch((e) => {
         console.warn("[debate] TTS 자동재생 실패:", e)
         // 재생 실패해도 다음 턴으로 진행 (한 턴 실패가 이후 공개를 막지 않도록)
+        finishStreaming()
         advanceTimerRef.current = setTimeout(revealNext, 600)
       })
     } else {
@@ -334,12 +370,15 @@ function DebatePageInner() {
   // 면접관/상대 발언 TTS를 끝까지 듣지 않고 건너뛴다 (연습·실전 공통).
   // 텍스트(turn.content)는 revealNext 시점에 이미 화면에 노출돼 유지되고, 현재 오디오만 멈춘 뒤 다음 공개로 진행한다.
   // audioUrl이 null인 턴(TTS 비활성/합성 실패)에서도 pause()는 무해하며 그대로 다음으로 넘어가 깨지지 않는다.
+  // 점진 노출 중이었다면 건너뛰는 즉시 전체 텍스트를 보여준다(streamingReveal 해제 → chatTurns의 content 그대로 표시).
   const handleSkipAudio = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.onended = null
       audioRef.current.onerror = null
+      audioRef.current.ontimeupdate = null
       audioRef.current.pause()
     }
+    setStreamingReveal(null)
     revealNext()
   }, [revealNext])
 
@@ -861,6 +900,9 @@ function DebatePageInner() {
                   ) : (
                     chatTurns.map((m) => {
                       const isMe = m.speaker === "USER"
+                      // 점진 노출 중인 상대 발언이면 TTS 진행률만큼만 잘라 보여주고, 그 외엔 전체 content를 그대로 표시.
+                      const reveal = streamingReveal?.key === m.key ? streamingReveal : null
+                      const displayContent = reveal ? reveal.sentences.slice(0, reveal.visibleCount).join("") : m.content
                       return (
                         <div key={m.key} className={cn("flex", isMe ? "justify-end" : "justify-start")}>
                           <div className="flex max-w-[80%] flex-col gap-0.5">
@@ -873,7 +915,7 @@ function DebatePageInner() {
                                 ? "rounded-br-sm bg-primary text-primary-foreground"
                                 : "rounded-bl-sm bg-secondary text-foreground"
                             )}>
-                              {m.content}
+                              {displayContent}
                             </div>
                           </div>
                         </div>
