@@ -1091,7 +1091,8 @@ function DebatePageInner() {
               )}
             </div>
 
-            {/* 실시간 분석 패널 (xl 이상에서만 표시) */}
+            {/* 실시간 분석 패널 (xl 이상에서만 표시) — 실전 모드는 종료 후 리포트에서만 확인 */}
+            {isPractice && (
             <div className="hidden xl:flex w-48 shrink-0 flex-col">
               <AnalysisPanel title="실시간 분석">
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">음성</div>
@@ -1128,6 +1129,7 @@ function DebatePageInner() {
                 </div>
               </AnalysisPanel>
             </div>
+            )}
             </div>
           ) : null}
         </div>
