@@ -38,6 +38,15 @@ import { useFaceAnalysis } from "@/hooks/use-face-analysis"
 import { useClipRecorder } from "@/hooks/use-clip-recorder"
 import { PreCheckScreen } from "@/components/pre-check-screen"
 
+const S3_BASE = "https://passroute-files.s3.ap-northeast-2.amazonaws.com/avatars/interviewer"
+
+const AVATAR_VIDEOS: Record<string, { speaking: string; idle: string }> = {
+  HR_MANAGER:      { speaking: `${S3_BASE}/면접관_hr_speaking.mp4`,   idle: `${S3_BASE}/면접관_hr_idle.mp4`   },
+  TEAM_LEAD:       { speaking: `${S3_BASE}/면접관_실무_speaking.mp4`, idle: `${S3_BASE}/면접관_실무_idle.mp4` },
+  EXECUTIVE:       { speaking: `${S3_BASE}/면접관_임원_speaking.mp4`, idle: `${S3_BASE}/면접관_임원_idle.mp4` },
+  TECH_INTERVIEWER:{ speaking: `${S3_BASE}/면접관_기술_speaking.mp4`, idle: `${S3_BASE}/면접관_기술_idle.mp4` },
+}
+
 // Countdown Component
 function CountdownScreen({ onComplete }: { onComplete: () => void }) {
   const [count, setCount] = useState(3)
@@ -95,6 +104,7 @@ function LiveInterviewScreen({
   company,
   role,
   stage,
+  aiInterviewer,
   onEnd,
   stream,
   playQuestionAudio,
@@ -105,6 +115,7 @@ function LiveInterviewScreen({
   company?: string
   role?: string
   stage?: string
+  aiInterviewer?: string
   onEnd: () => void
   stream: MediaStream | null
   playQuestionAudio: (url: string | null | undefined) => void
@@ -324,45 +335,30 @@ function LiveInterviewScreen({
           {/* Video Area */}
           <div className="relative flex-1 overflow-hidden rounded-xl border border-border bg-white">
             <div className="grid h-full grid-cols-1 gap-3 p-3 lg:grid-cols-2">
-              <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-lg bg-background">
-                {/* AI Avatar with voice visualization */}
-                <div className="relative">
-                  {/* Pulsing rings when speaking */}
-                  {answerState === "waiting" && (
+              <div className="relative flex items-center justify-center overflow-hidden rounded-lg bg-black">
+                {(() => {
+                  const videos = AVATAR_VIDEOS[aiInterviewer ?? "TEAM_LEAD"] ?? AVATAR_VIDEOS["TEAM_LEAD"]
+                  const isSpeaking = answerState === "waiting"
+                  return (
                     <>
-                      <div className="absolute inset-0 m-auto h-24 w-24 animate-ping rounded-full border border-foreground/5" style={{ animationDuration: "2s" }} />
-                      <div className="absolute inset-0 m-auto h-28 w-28 animate-ping rounded-full border border-foreground/3" style={{ animationDuration: "3s" }} />
-                    </>
-                  )}
-                  <div className={cn(
-                    "relative flex h-20 w-20 items-center justify-center rounded-full border-2 transition-all duration-300",
-                    answerState === "waiting" ? "border-foreground/20 bg-foreground/5" : "border-border bg-background"
-                  )}>
-                    <Headphones className="h-8 w-8 text-foreground/60" />
-                  </div>
-                </div>
-                <p className="mt-3 text-sm font-medium text-foreground">AI 면접관</p>
-
-                {/* Voice waveform when AI is speaking */}
-                {answerState === "waiting" && (
-                  <div className="mt-3 flex items-center gap-1">
-                    {Array.from({ length: 12 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-1 rounded-full bg-foreground/40"
-                        style={{
-                          height: `${8 + Math.sin((i / 12) * Math.PI * 2 + Date.now() / 300) * 10}px`,
-                          animation: "waveBar 0.8s ease-in-out infinite",
-                          animationDelay: `${i * 60}ms`,
-                        }}
+                      <video
+                        key="speaking"
+                        src={videos.speaking}
+                        autoPlay loop muted playsInline
+                        className={cn("h-full w-full object-cover", !isSpeaking && "hidden")}
                       />
-                    ))}
-                  </div>
-                )}
-
-                {answerState === "waiting" && (
-                  <span className="mt-2 text-xs text-muted-foreground">질문을 읽고 있습니다...</span>
-                )}
+                      <video
+                        key="idle"
+                        src={videos.idle}
+                        autoPlay loop muted playsInline
+                        className={cn("h-full w-full object-cover", isSpeaking && "hidden")}
+                      />
+                    </>
+                  )
+                })()}
+                <div className="absolute bottom-3 left-3 rounded-full bg-black/50 px-2.5 py-1 backdrop-blur-sm">
+                  <span className="text-xs font-medium text-white">AI 면접관</span>
+                </div>
               </div>
               <div className="relative flex items-center justify-center overflow-hidden rounded-lg bg-background">
                 {stream ? (
@@ -789,6 +785,7 @@ function InterviewPageInner() {
       company={searchParams?.get("company") || undefined}
       role={searchParams?.get("role") || undefined}
       stage={searchParams?.get("stage") || undefined}
+      aiInterviewer={searchParams?.get("aiInterviewer") || undefined}
       onEnd={handleInterviewEnd}
       stream={mediaStream}
       playQuestionAudio={playQuestionAudio}

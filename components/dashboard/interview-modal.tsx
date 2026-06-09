@@ -929,7 +929,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
 
                     const { sessionId } = await startInterview(roomId)
                     handleClose()
-                    router.push(`/interview?mode=${selectedPracticeMode}&sessionId=${sessionId}`)
+                    const aiInterviewer = selectedPersonas[0] || "TEAM_LEAD"
+                    router.push(`/interview?mode=${selectedPracticeMode}&sessionId=${sessionId}&aiInterviewer=${aiInterviewer}`)
                   } catch {
                     setStarting(false)
                   }
