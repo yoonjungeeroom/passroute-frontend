@@ -93,6 +93,7 @@ export function useClipRecorder({
 }: Params): UseClipRecorderReturn {
   const clipsRef = useRef<ClipEntry[]>([])
   const stopPromiseRef = useRef<Promise<void>>(Promise.resolve())
+  const recorderRef = useRef<MediaRecorder | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const getPresignedUrlFnRef = useRef(getPresignedUrlFn ?? getPresignedUrl)
   useEffect(() => { getPresignedUrlFnRef.current = getPresignedUrlFn ?? getPresignedUrl }, [getPresignedUrlFn])
@@ -123,6 +124,7 @@ export function useClipRecorder({
     } catch {
       return
     }
+    recorderRef.current = recorder
 
     let resolveStop!: () => void
     stopPromiseRef.current = new Promise<void>((res) => { resolveStop = res })
@@ -173,11 +175,15 @@ export function useClipRecorder({
 
     return () => {
       clearInterval(timer)
+      recorderRef.current = null
       if (recorder.state !== "inactive") recorder.stop()
     }
   }, [active, stream])
 
   const uploadWorstClip = useCallback(async (sessionId: number): Promise<{ url: string; score: number; questionId: number; reason: ClipReason } | null> => {
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.stop()
+    }
     await stopPromiseRef.current
 
     if (clipsRef.current.length === 0) return null

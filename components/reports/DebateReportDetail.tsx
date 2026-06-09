@@ -43,7 +43,7 @@ export function DebateReportDetail({ report }: { report: DebateReportResponse })
               <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
                 <FontAwesomeIcon icon={faMicrophone} className="h-3.5 w-3.5 text-primary" />
                 음성 분석
-                <span className="ml-auto text-xs font-normal text-muted-foreground">{voiceAnalysis.voiceScore ?? "-"}점</span>
+                <span className="ml-auto text-xs font-normal text-muted-foreground">{voiceAnalysis.voiceScore != null ? Math.round(voiceAnalysis.voiceScore) : "-"}점</span>
               </h4>
               <div className="grid grid-cols-3 gap-2">
                 <MetricCard label="말하기 속도" value={voiceAnalysis.avgWpm != null ? Math.round(voiceAnalysis.avgWpm) : "-"} unit="wpm" />
@@ -57,10 +57,10 @@ export function DebateReportDetail({ report }: { report: DebateReportResponse })
               <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
                 <FontAwesomeIcon icon={faEye} className="h-3.5 w-3.5 text-accent" />
                 표정 분석
-                <span className="ml-auto text-xs font-normal text-muted-foreground">{faceAnalysis.faceScore ?? "-"}점</span>
+                <span className="ml-auto text-xs font-normal text-muted-foreground">{faceAnalysis.faceScore != null ? Math.round(faceAnalysis.faceScore) : "-"}점</span>
               </h4>
               <div className="grid grid-cols-3 gap-2">
-                <MetricCard label="시선 집중" value={faceAnalysis.avgGazeRatio != null ? String(Math.round(faceAnalysis.avgGazeRatio * 100)) : "-"} unit="%" />
+                <MetricCard label="시선 집중" value={faceAnalysis.avgGazeRatio != null ? String(Math.round(faceAnalysis.avgGazeRatio)) : "-"} unit="%" />
                 <MetricCard label="시선 이탈" value={faceAnalysis.gazeOffCount ?? "-"} unit="회" />
                 <MetricCard label="분당 깜빡임" value={faceAnalysis.avgBlinkPerMin != null ? Math.round(faceAnalysis.avgBlinkPerMin) : "-"} unit="회" />
               </div>
