@@ -206,3 +206,36 @@ export async function endDebateSession(sessionId: number): Promise<void> {
     "토론 종료에 실패했습니다"
   )
 }
+
+export async function getDebatePresignedUrl(
+  sessionId: number,
+  questionId: number,
+): Promise<{ uploadUrl: string; fileUrl: string }> {
+  return apiFetch<{ uploadUrl: string; fileUrl: string }>(
+    `/debate/${sessionId}/clip-upload-url?questionId=${questionId}`,
+    { method: "GET" },
+    "업로드 URL 조회에 실패했습니다"
+  )
+}
+
+export async function saveDebateWorstClip(
+  sessionId: number,
+  videoUrl: string,
+  clipScore: number,
+  questionId: number,
+  clipReason: string,
+): Promise<void> {
+  await apiFetch<void>(
+    `/debate/${sessionId}/worst-clip`,
+    { method: "POST", body: JSON.stringify({ videoUrl, clipScore, questionId, clipReason }) },
+    "클립 저장에 실패했습니다"
+  )
+}
+
+export async function getDebateWorstClip(sessionId: number): Promise<{ videoUrl: string; clipReason: string | null } | null> {
+  return apiFetch<{ videoUrl: string; clipReason: string | null } | null>(
+    `/debate/${sessionId}/worst-clip`,
+    { method: "GET" },
+    "클립 조회에 실패했습니다"
+  )
+}

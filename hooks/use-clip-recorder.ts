@@ -72,6 +72,7 @@ interface Params {
   fillerCount: number
   gazeRatio: number
   gazeOffCount: number
+  getPresignedUrlFn?: (sessionId: number, questionId: number) => Promise<{ uploadUrl: string; fileUrl: string }>
 }
 
 export interface UseClipRecorderReturn {
@@ -88,10 +89,13 @@ export function useClipRecorder({
   fillerCount,
   gazeRatio,
   gazeOffCount,
+  getPresignedUrlFn,
 }: Params): UseClipRecorderReturn {
   const clipsRef = useRef<ClipEntry[]>([])
   const stopPromiseRef = useRef<Promise<void>>(Promise.resolve())
   const [isUploading, setIsUploading] = useState(false)
+  const getPresignedUrlFnRef = useRef(getPresignedUrlFn ?? getPresignedUrl)
+  useEffect(() => { getPresignedUrlFnRef.current = getPresignedUrlFn ?? getPresignedUrl }, [getPresignedUrlFn])
 
   const analysisRef = useRef({ wpm, silenceSec, fillerCount, gazeRatio, gazeOffCount })
   useEffect(() => {
@@ -181,7 +185,7 @@ export function useClipRecorder({
     const worst = clipsRef.current.reduce((min, c) => c.score < min.score ? c : min)
     setIsUploading(true)
     try {
-      const { uploadUrl, fileUrl } = await getPresignedUrl(sessionId, worst.questionId)
+      const { uploadUrl, fileUrl } = await getPresignedUrlFnRef.current(sessionId, worst.questionId)
       await fetch(uploadUrl, {
         method: "PUT",
         body: worst.blob,

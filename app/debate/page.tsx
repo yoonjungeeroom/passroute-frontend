@@ -39,6 +39,8 @@ import {
   submitDebateTurn,
   submitDebateBranch,
   endDebateSession,
+  getDebatePresignedUrl,
+  saveDebateWorstClip,
   type DebateTopic,
   type DebatePersona,
   type DebateStateResponse,
@@ -49,6 +51,7 @@ import {
 } from "@/lib/api/debate"
 import { ApiError } from "@/lib/api/client"
 import { useDebateSTT } from "@/hooks/use-debate-stt"
+import { useClipRecorder } from "@/hooks/use-clip-recorder"
 
 const STATE_TO_ROUND: Record<string, DebateRound> = {
   OPENING_USER: "OPENING",
@@ -182,6 +185,19 @@ function DebatePageInner() {
     sessionId: sessionId ?? 0,
     videoRef: debateVideoRef,
     active: recording && sessionId !== null,
+  })
+
+  // 클립 레코더 — 토론 세션 전체를 하나의 구간으로 녹화해 최악 구간 클립을 리포트에 첨부
+  const { uploadWorstClip } = useClipRecorder({
+    stream: mediaStream,
+    active: phase === "debating" && !!sessionId,
+    questionId: 0,
+    wpm: sttWpm,
+    silenceSec: sttSilenceSec,
+    fillerCount: sttFillerCount,
+    gazeRatio,
+    gazeOffCount,
+    getPresignedUrlFn: getDebatePresignedUrl,
   })
 
   // 면접관 최신 멘트 — 공개된 AI_INTERVIEWER 턴만 대상(상단 배너용). latestTurns는 오래된→최신 순.
@@ -696,6 +712,12 @@ function DebatePageInner() {
       await endDebateSession(sessionId)
     } catch {
       // end 실패해도 리포트는 생성됐을 수 있음
+    }
+    try {
+      const clip = await uploadWorstClip(sessionId)
+      if (clip) await saveDebateWorstClip(sessionId, clip.url, clip.score, clip.questionId, clip.reason)
+    } catch {
+      // 클립 업로드 실패는 무시 — 리포트는 정상 진행
     }
     router.push(`/reports/debate/${sessionId}`)
   }

@@ -7,6 +7,7 @@ import { MobileHeader } from "@/components/dashboard/mobile-header"
 import { Button } from "@/components/ui/button"
 import { Loader2, ChevronLeft, RotateCcw, AlertCircle, Clock } from "lucide-react"
 import { getDebateReport } from "@/lib/api/reports"
+import { getDebateWorstClip } from "@/lib/api/debate"
 import { DebateReportView } from "@/components/reports/DebateReportView"
 import { DebateReportDetail } from "@/components/reports/DebateReportDetail"
 import type { DebateReportResponse } from "@/types/report"
@@ -20,6 +21,7 @@ function DebateReportContent() {
   const sessionId = Number(params.sessionId)
 
   const [report, setReport] = useState<DebateReportResponse | null>(null)
+  const [worstClip, setWorstClip] = useState<{ videoUrl: string; clipReason: string | null } | null>(null)
   const [status, setStatus] = useState<"loading" | "done" | "error" | "timeout">("loading")
   const [retryCount, setRetryCount] = useState(0)
 
@@ -49,6 +51,7 @@ function DebateReportContent() {
           timer = setTimeout(poll, POLL_INTERVAL_MS)
         } else {
           setReport(result)
+          getDebateWorstClip(sessionId).then(clip => { if (!cancelled) setWorstClip(clip) }).catch(() => {})
           setStatus("done")
         }
       } catch {
@@ -58,6 +61,7 @@ function DebateReportContent() {
 
     setStatus("loading")
     setReport(null)
+    setWorstClip(null)
     poll()
 
     return () => {
@@ -145,7 +149,7 @@ function DebateReportContent() {
           {status === "done" && report && (
             <div className="grid gap-6 lg:grid-cols-3 lg:items-start">
               <div className="lg:sticky lg:top-8">
-                <DebateReportView report={report} compact />
+                <DebateReportView report={report} worstClipUrl={worstClip?.videoUrl} worstClipReason={worstClip?.clipReason} compact />
               </div>
               <div className="lg:col-span-2">
                 <DebateReportDetail report={report} />
