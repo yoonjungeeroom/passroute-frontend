@@ -253,7 +253,7 @@ function LiveInterviewScreen({
 
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex h-screen flex-col bg-slate-50 overflow-hidden">
       {/* Top Bar */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5">
         <div className="flex min-w-0 items-center gap-3">
