@@ -17,6 +17,7 @@ import {
   Clock,
   Lock,
   Video,
+  X,
 } from "lucide-react"
 import { PreCheckScreen } from "@/components/pre-check-screen"
 import { cn } from "@/lib/utils"
@@ -704,6 +705,10 @@ function DebatePageInner() {
     }
   }
 
+  const handleExitEarly = () => {
+    router.push("/dashboard")
+  }
+
   const handleEnd = async () => {
     if (!sessionId) return
     try {
@@ -812,10 +817,11 @@ function DebatePageInner() {
         </div>
         {phase === "debating" && (
           <button
-            onClick={handleEnd}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+            onClick={handleExitEarly}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-rose-500 transition-colors hover:bg-rose-50"
           >
-            토론 종료
+            <X className="h-4 w-4" />
+            종료
           </button>
         )}
       </header>

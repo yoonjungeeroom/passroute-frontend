@@ -97,6 +97,7 @@ function LiveInterviewScreen({
   role,
   stage,
   onEnd,
+  onExitEarly,
   stream,
   playQuestionAudio,
 }: {
@@ -107,6 +108,7 @@ function LiveInterviewScreen({
   role?: string
   stage?: string
   onEnd: () => void
+  onExitEarly: () => void
   stream: MediaStream | null
   playQuestionAudio: (url: string | null | undefined) => void
 }) {
@@ -275,7 +277,7 @@ function LiveInterviewScreen({
             <Clock className="h-4 w-4 text-slate-400" />
             <span className="font-mono text-sm font-semibold text-slate-900">{formatTime(totalTime)}</span>
           </div>
-          <button onClick={onEnd} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-rose-500 transition-colors hover:bg-rose-50">
+          <button onClick={onExitEarly} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-rose-500 transition-colors hover:bg-rose-50">
             <X className="h-4 w-4" />
             종료
           </button>
@@ -710,6 +712,10 @@ function InterviewPageInner() {
     }
   }
 
+  const handleInterviewExitEarly = () => {
+    router.push("/dashboard")
+  }
+
   if (!sessionIdParam) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -771,6 +777,7 @@ function InterviewPageInner() {
       role={searchParams?.get("role") || undefined}
       stage={searchParams?.get("stage") || undefined}
       onEnd={handleInterviewEnd}
+      onExitEarly={handleInterviewExitEarly}
       stream={mediaStream}
       playQuestionAudio={playQuestionAudio}
     />
