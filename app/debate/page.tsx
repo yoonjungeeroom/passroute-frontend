@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { PreCheckScreen } from "@/components/pre-check-screen"
 import { cn } from "@/lib/utils"
+import { ROUND_LABEL } from "@/lib/debate-rounds"
 import { useFaceAnalysis } from "@/hooks/use-face-analysis"
 
 interface DeviceStatus {
@@ -62,13 +63,6 @@ const STATE_TO_ROUND: Record<string, DebateRound> = {
 // 실전모드 한 턴 제한시간(초). 연습모드엔 적용하지 않는다.
 const EXAM_TURN_LIMIT_SEC = 120
 
-const roundLabel: Record<DebateRound, string> = {
-  OPENING: "개회",
-  REBUTTAL_1: "반론1",
-  REBUTTAL_2: "반론2",
-  CLOSING: "마무리",
-  MODERATION: "사회",
-}
 
 type Phase = "precheck" | "prep" | "debating" | "ending"
 
@@ -223,6 +217,14 @@ function DebatePageInner() {
   // 사용자 입력 가능 구간(내 턴이면서 공개 큐 비워진 상태)
   const userTurnActive = phase === "debating" && !!debateState?.waitingForUser && !revealing
   const turnTimeUp = isExam && turnTimerStarted && turnTimeLeft <= 0
+
+  // 라운드 stepper 단계 — 분기 선택에 따라 동적. "토론 마무리하기"(반박2 건너뜀)를 고르면 반박2 칸이 빠져 3단계.
+  // 반박2를 거쳤거나(턴 존재) 아직 마무리에 도달하지 않았으면(분기 전·한 번 더 반박) 4단계로 노출.
+  const didRebuttal2 = !!debateState?.latestTurns?.some((t) => t.round === "REBUTTAL_2")
+  const atOrPastClosing = currentRound === "CLOSING" || phase === "ending"
+  const debateSteps = (didRebuttal2 || !atOrPastClosing
+    ? ["OPENING", "REBUTTAL_1", "REBUTTAL_2", "CLOSING"]
+    : ["OPENING", "REBUTTAL_1", "CLOSING"]) as DebateRound[]
 
   // 실전모드: 새 사용자 턴이 시작되면(라운드 변경) 제한시간·타이머시작 플래그 리셋
   useEffect(() => {
@@ -864,7 +866,7 @@ function DebatePageInner() {
 
       {/* Round stepper */}
       <div className="flex h-11 shrink-0 items-center justify-center gap-2 border-b border-slate-200 bg-white">
-        {(["OPENING", "REBUTTAL_1", "REBUTTAL_2", "CLOSING"] as DebateRound[]).map((r, i, arr) => {
+        {debateSteps.map((r, i, arr) => {
           const curIdx = currentRound ? arr.indexOf(currentRound) : -1
           const active = r === currentRound && phase === "debating"
           const done = curIdx > i || phase === "ending"
@@ -875,7 +877,7 @@ function DebatePageInner() {
                 <span className={cn("flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold", active ? "bg-blue-600 text-white" : done ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400")}>
                   {i + 1}
                 </span>
-                {roundLabel[r]}
+                {ROUND_LABEL[r]}
               </span>
             </div>
           )
@@ -964,7 +966,7 @@ function DebatePageInner() {
               <div className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                 <div className="mb-1.5 flex items-center gap-2">
                   <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600">사회자</span>
-                  <span className="rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold text-amber-600">{roundLabel[latestInterviewerTurn.round] ?? latestInterviewerTurn.round}</span>
+                  <span className="rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold text-amber-600">{ROUND_LABEL[latestInterviewerTurn.round] ?? latestInterviewerTurn.round}</span>
                 </div>
                 <p className="text-sm leading-relaxed text-slate-900">{latestInterviewerTurn.content}</p>
               </div>
