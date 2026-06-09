@@ -17,6 +17,7 @@ import {
   AlertCircle,
   Clock,
   Headphones,
+  Video,
 } from "lucide-react"
 
 // Types
@@ -77,12 +78,12 @@ function CountdownScreen({ onComplete }: { onComplete: () => void }) {
 // Analysis panel - unified light theme
 function AnalysisPanel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col rounded-xl border border-border bg-card">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+    <div className="flex flex-col rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+        <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+        <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">{title}</h3>
       </div>
-      <div className="flex-1 p-3">{children}</div>
+      <div className="flex-1 p-4">{children}</div>
     </div>
   )
 }
@@ -252,224 +253,204 @@ function LiveInterviewScreen({
 
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-slate-50">
       {/* Top Bar */}
-      <header className="flex items-center justify-between border-b border-border bg-white px-5 py-3">
-        <div className="flex items-center gap-4">
-          {company && <span className="font-semibold text-foreground">{company}</span>}
-          {company && role && <div className="h-4 w-px bg-border" />}
-          {role && <span className="text-sm text-muted-foreground">{role}</span>}
-          {(company || role) && stage && <div className="h-4 w-px bg-border" />}
-          {stage && <span className="rounded-md border border-border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">{stage}</span>}
-        </div>
-        <div className="flex items-center gap-3">
-          {mode === "practice" && (
-            <span className="text-xs font-medium text-muted-foreground">Q{currentQuestionIndex + 1}/{totalQuestions}</span>
-          )}
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5">
-            <Clock className="h-4 w-4 text-muted-foreground" />
-            <span className="font-mono text-sm font-medium text-foreground">{formatTime(totalTime)}</span>
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-sm bg-blue-600" />
+            <span className="text-[15px] font-bold tracking-tight text-slate-900">passroute</span>
           </div>
-          <button onClick={onEnd} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10">
+          {company && <div className="h-4 w-px bg-slate-200" />}
+          {company && <span className="truncate text-sm font-semibold text-slate-900">{company}</span>}
+          {role && <div className="h-4 w-px bg-slate-200" />}
+          {role && <span className="truncate text-sm text-slate-500">{role}</span>}
+          {stage && <span className="shrink-0 whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-500">{stage}</span>}
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          {mode === "practice" && (
+            <span className="text-xs font-semibold text-slate-500">Q {followUpQuestion ? "+" : currentQuestionIndex + 1} / {totalQuestions}</span>
+          )}
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5">
+            <Clock className="h-4 w-4 text-slate-400" />
+            <span className="font-mono text-sm font-semibold text-slate-900">{formatTime(totalTime)}</span>
+          </div>
+          <button onClick={onEnd} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-rose-500 transition-colors hover:bg-rose-50">
             <X className="h-4 w-4" />
             종료
           </button>
         </div>
       </header>
 
-      {/* Main Grid */}
+      {/* Progress */}
+      <div className="h-[3px] shrink-0 bg-slate-100">
+        <div
+          className="h-full bg-blue-600 transition-all duration-500"
+          style={{ width: `${Math.min(100, ((currentQuestionIndex + (answerState === "answered" ? 1 : 0.4)) / totalQuestions) * 100)}%` }}
+        />
+      </div>
+
+      {/* Question bar (fixed, top) */}
+      <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="mb-2 flex items-center gap-2">
+              <span className={cn("rounded-md px-2 py-0.5 text-xs font-bold", followUpQuestion ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-700")}>
+                {followUpQuestion ? "꼬리 질문" : `Q${currentQuestionIndex + 1}`}
+              </span>
+              {currentQuestion?.audioUrl && (
+                <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs text-slate-500" onClick={() => playQuestionAudio(currentQuestion?.audioUrl)}>
+                  <Headphones className="h-3.5 w-3.5" />
+                  다시 듣기
+                </Button>
+              )}
+            </div>
+            <p className={cn("font-semibold leading-relaxed text-slate-900", mode === "practice" ? "text-xl" : "text-lg font-medium text-slate-500")}>
+              {mode === "practice" ? currentQuestion?.questionText ?? "질문을 불러오는 중..." : "질문이 음성으로 재생되었습니다. 준비되면 답변을 시작하세요."}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2">
+            <span className={cn("font-mono text-2xl font-bold leading-none", answerState === "answering" ? (questionTimeLimit - answerTime <= 30 ? "text-rose-500" : "text-blue-600") : "text-slate-400")}>
+              {formatTime(Math.max(0, questionTimeLimit - answerTime))}
+            </span>
+            <span className="text-[10px] font-semibold text-slate-400">남은 시간</span>
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {answerState === "waiting" && <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-amber-600"><span className="h-2.5 w-2.5 rounded-full bg-amber-400" />답변 대기 중</span>}
+            {answerState === "answering" && <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-slate-900"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-500" />답변 중</span>}
+            {answerState === "answered" && <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-emerald-600"><CheckCircle2 className="h-4 w-4" />답변 완료</span>}
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => setIsPaused(!isPaused)}>
+              {isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+              {isPaused ? "재개" : "일시정지"}
+            </Button>
+            {mode === "practice" && answerState === "answered" && !followUpQuestion && (
+              <>
+                <Button variant="ghost" size="sm" className="gap-1 text-xs" onClick={handleRetryAnswer}><RotateCcw className="h-3 w-3" />다시 답변</Button>
+                <Button variant="ghost" size="sm" className="gap-1 text-xs" onClick={handleSkipQuestion}><SkipForward className="h-3 w-3" />넘어가기</Button>
+              </>
+            )}
+          </div>
+          <div>
+            {answerState === "waiting" && (
+              <Button className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700" onClick={handleStartAnswer}>답변 시작<Mic className="h-4 w-4" /></Button>
+            )}
+            {answerState === "answering" && (
+              <Button className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700" onClick={handleFinishAnswer}>답변 완료<CheckCircle2 className="h-4 w-4" /></Button>
+            )}
+            {answerState === "answered" && (
+              <Button className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700" onClick={handleNextQuestion} disabled={isUploading}>
+                {isUploading
+                  ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />업로드 중...</>
+                  : <>{currentQuestionIndex < totalQuestions - 1 ? "다음 질문" : "면접 종료"}<ArrowRight className="h-4 w-4" /></>
+                }
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main: 내 카메라(메인) + AI 면접관 PIP + 분석 패널 */}
       <main className="flex flex-1 gap-3 overflow-hidden p-3">
-        {/* Left Column: 통합 분석 패널 — 실전 모드는 종료 후 리포트에서만 확인 */}
-        {mode === "practice" && (
-          <div className="hidden w-56 shrink-0 flex-col gap-3 xl:flex">
-            <AnalysisPanel title="실시간 분석">
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">음성</div>
-              <div className="mb-3 grid grid-cols-3 gap-1.5">
-                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
-                  <div className="text-sm font-bold text-foreground">{wpm > 0 ? Math.round(wpm) : "--"}</div>
-                  <div className="text-[9px] text-muted-foreground">WPM</div>
-                </div>
-                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
-                  <div className="text-sm font-bold text-foreground">{silenceSec > 0 ? silenceSec.toFixed(1) : "--"}</div>
-                  <div className="text-[9px] text-muted-foreground">침묵(초)</div>
-                </div>
-                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
-                  <div className="text-sm font-bold text-foreground">{totalFillerCount > 0 ? totalFillerCount : "--"}</div>
-                  <div className="text-[9px] text-muted-foreground">필러워드</div>
+        {/* Stage — 내 카메라 (크게) */}
+        <div className="relative flex-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-sm">
+          {stream ? (
+            <video ref={userVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full items-center justify-center"><User className="h-20 w-20 text-slate-300" /></div>
+          )}
+
+          {/* REC */}
+          {answerState === "answering" && (
+            <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-slate-900/55 px-3 py-1 backdrop-blur-sm">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+              <span className="text-xs font-bold tracking-wider text-white">REC</span>
+            </div>
+          )}
+
+          {/* self tag */}
+          <div className="absolute bottom-4 left-4 rounded-lg bg-slate-900/55 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">나 · 응시자</div>
+
+          {/* AI 면접관 PIP — 아바타 영상 자리 (추후 영상 삽입) */}
+          <div className="absolute right-4 top-4 h-36 w-52 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-lg">
+            <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
+            <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
+              <Video className="h-6 w-6 opacity-70" />
+              <span className="font-mono text-[10px]">아바타 영상 자리</span>
+            </div>
+            {answerState === "waiting" && (
+              <div className="absolute left-0 right-0 top-3 flex items-end justify-center gap-[3px]">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <span key={i} className="w-[3px] rounded-full bg-blue-600" style={{ height: 16, animation: "waveBar 0.9s ease-in-out infinite", animationDelay: `${i * 70}ms` }} />
+                ))}
+              </div>
+            )}
+            <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-white/85 px-2 py-1 text-[11px] font-semibold text-slate-700 backdrop-blur-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />AI 면접관
+            </div>
+          </div>
+
+          {/* feedback toast (practice) */}
+          {mode === "practice" && (sttFeedback || faceFeedback) && (
+            <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center gap-2 rounded-full bg-amber-500 px-4 py-2 shadow-lg">
+                <AlertCircle className="h-4 w-4 shrink-0 text-white" />
+                <span className="text-xs font-semibold text-white">{sttFeedback || faceFeedback}</span>
+              </div>
+            </div>
+          )}
+
+          {/* mic level (answering) */}
+          {answerState === "answering" && (
+            <div className="absolute bottom-4 left-1/2 w-72 max-w-[60%] -translate-x-1/2">
+              <div className="flex items-center gap-2 rounded-lg bg-white/85 px-3 py-2 shadow-lg backdrop-blur-sm">
+                <Mic className="h-4 w-4 text-blue-600" />
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-full rounded-full bg-blue-600 transition-all duration-100" style={{ width: `${audioLevel}%` }} />
                 </div>
               </div>
+            </div>
+          )}
+        </div>
 
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">영상</div>
-              <div className="space-y-2">
-                <div>
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">시선 고정률</span>
-                    <span className="text-xs font-semibold text-foreground">{Math.round(gazeRatio)}%</span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${gazeRatio}%` }} />
-                  </div>
+        {/* Side analysis (practice only) */}
+        {mode === "practice" && (
+          <div className="hidden w-72 shrink-0 flex-col gap-3 xl:flex">
+            <AnalysisPanel title="실시간 분석">
+              <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">음성</p>
+              <div className="mb-4 grid grid-cols-3 gap-2">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
+                  <div className="font-mono text-lg font-bold text-slate-900">{wpm > 0 ? Math.round(wpm) : "--"}</div>
+                  <div className="text-[10px] text-slate-500">WPM</div>
                 </div>
-                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
-                  <div className="text-sm font-bold text-foreground">{gazeOffCount}</div>
-                  <div className="text-[9px] text-muted-foreground">시선이탈</div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
+                  <div className="font-mono text-lg font-bold text-slate-900">{silenceSec > 0 ? silenceSec.toFixed(1) : "--"}</div>
+                  <div className="text-[10px] text-slate-500">침묵(초)</div>
                 </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
+                  <div className="font-mono text-lg font-bold text-slate-900">{totalFillerCount > 0 ? totalFillerCount : "--"}</div>
+                  <div className="text-[10px] text-slate-500">필러워드</div>
+                </div>
+              </div>
+              <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">영상</p>
+              <div className="mb-3">
+                <div className="mb-1.5 flex items-center justify-between text-xs">
+                  <span className="text-slate-500">시선 고정률</span>
+                  <span className="font-bold text-slate-900">{Math.round(gazeRatio)}%</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-full rounded-full bg-blue-600 transition-all duration-500" style={{ width: `${gazeRatio}%` }} />
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <span className="text-xs text-slate-500">시선 이탈</span>
+                <span className="font-mono text-lg font-bold text-slate-900">{gazeOffCount}</span>
               </div>
             </AnalysisPanel>
           </div>
         )}
-
-        {/* Center Column: Video + Question */}
-        <div className="flex flex-1 flex-col gap-3">
-          {/* Video Area */}
-          <div className="relative flex-1 overflow-hidden rounded-xl border border-border bg-white">
-            <div className="grid h-full grid-cols-1 gap-3 p-3 lg:grid-cols-2">
-              <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-lg bg-background">
-                {/* AI Avatar with voice visualization */}
-                <div className="relative">
-                  {/* Pulsing rings when speaking */}
-                  {answerState === "waiting" && (
-                    <>
-                      <div className="absolute inset-0 m-auto h-24 w-24 animate-ping rounded-full border border-foreground/5" style={{ animationDuration: "2s" }} />
-                      <div className="absolute inset-0 m-auto h-28 w-28 animate-ping rounded-full border border-foreground/3" style={{ animationDuration: "3s" }} />
-                    </>
-                  )}
-                  <div className={cn(
-                    "relative flex h-20 w-20 items-center justify-center rounded-full border-2 transition-all duration-300",
-                    answerState === "waiting" ? "border-foreground/20 bg-foreground/5" : "border-border bg-background"
-                  )}>
-                    <Headphones className="h-8 w-8 text-foreground/60" />
-                  </div>
-                </div>
-                <p className="mt-3 text-sm font-medium text-foreground">AI 면접관</p>
-
-                {/* Voice waveform when AI is speaking */}
-                {answerState === "waiting" && (
-                  <div className="mt-3 flex items-center gap-1">
-                    {Array.from({ length: 12 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-1 rounded-full bg-foreground/40"
-                        style={{
-                          height: `${8 + Math.sin((i / 12) * Math.PI * 2 + Date.now() / 300) * 10}px`,
-                          animation: "waveBar 0.8s ease-in-out infinite",
-                          animationDelay: `${i * 60}ms`,
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {answerState === "waiting" && (
-                  <span className="mt-2 text-xs text-muted-foreground">질문을 읽고 있습니다...</span>
-                )}
-              </div>
-              <div className="relative flex items-center justify-center overflow-hidden rounded-lg bg-background">
-                {stream ? (
-                  <video ref={userVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-                ) : (
-                  <User className="h-16 w-16 text-muted-foreground/20" />
-                )}
-                <div className="absolute left-3 top-3 flex items-center gap-2 rounded-full bg-white/90 px-2.5 py-1 shadow-sm backdrop-blur-sm">
-                  <div className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
-                  <span className="text-xs font-medium text-foreground">REC</span>
-                </div>
-                {mode === "practice" && (sttFeedback || faceFeedback) && (
-                  <div className="absolute left-3 right-3 top-12 z-10 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="flex items-center gap-2 rounded-lg bg-amber-500/90 px-3 py-2 shadow backdrop-blur-sm">
-                      <AlertCircle className="h-4 w-4 shrink-0 text-white" />
-                      <span className="text-xs font-medium text-white">{sttFeedback || faceFeedback}</span>
-                    </div>
-                  </div>
-                )}
-                {answerState === "answering" && (
-                  <div className="absolute bottom-3 left-3 right-3">
-                    <div className="flex items-center gap-2 rounded-lg bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
-                      <Mic className="h-4 w-4 text-primary" />
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-primary transition-all duration-100" style={{ width: `${audioLevel}%` }} />
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Question + Timer */}
-          <div className="rounded-xl border border-border bg-white p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="rounded border border-border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                    Q{followUpQuestion ? "+" : currentQuestionIndex + 1}
-                  </span>
-                  {followUpQuestion && (
-                    <span className="rounded border border-border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">꼬리 질문</span>
-                  )}
-                  {/* 면접관 TTS 다시 듣기 — audioUrl 있을 때만 노출(null이면 숨김) */}
-                  {currentQuestion?.audioUrl && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 gap-1 px-2 text-xs text-muted-foreground"
-                      onClick={() => playQuestionAudio(currentQuestion?.audioUrl)}
-                    >
-                      <Headphones className="h-3.5 w-3.5" />
-                      다시 듣기
-                    </Button>
-                  )}
-                </div>
-                <p className="text-base font-medium leading-relaxed text-foreground">
-                  {mode === "practice" ? currentQuestion?.questionText ?? "질문을 불러오는 중..." : "질문이 재생되었습니다. 답변을 시작하세요."}
-                </p>
-              </div>
-              <div className="flex flex-col items-center gap-1 rounded-lg border border-border bg-background px-4 py-2">
-                <span className={cn("font-mono text-2xl font-bold", answerState === "answering" ? (questionTimeLimit - answerTime <= 30 ? "text-destructive" : "text-primary") : "text-muted-foreground")}>
-                  {formatTime(Math.max(0, questionTimeLimit - answerTime))}
-                </span>
-                <span className="font-mono text-xs text-muted-foreground">남은 시간</span>
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  {answerState === "waiting" && <><div className="h-2.5 w-2.5 rounded-full bg-amber-400" /><span className="text-sm text-muted-foreground">답변 대기 중</span></>}
-                  {answerState === "answering" && <><div className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-500" /><span className="text-sm text-foreground">답변 중</span></>}
-                  {answerState === "answered" && <><CheckCircle2 className="h-4 w-4 text-success" /><span className="text-sm text-success">답변 완료</span></>}
-                </div>
-                <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => setIsPaused(!isPaused)}>
-                  {isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
-                  {isPaused ? "재개" : "일시정지"}
-                </Button>
-                {mode === "practice" && answerState === "answered" && (
-                  <>
-                    <Button variant="ghost" size="sm" className="gap-1 text-xs" onClick={handleRetryAnswer}><RotateCcw className="h-3 w-3" />다시 답변</Button>
-                    <Button variant="ghost" size="sm" className="gap-1 text-xs" onClick={handleSkipQuestion}><SkipForward className="h-3 w-3" />넘어가기</Button>
-                  </>
-                )}
-              </div>
-              <div>
-                {answerState === "waiting" && (
-                  <Button className="gap-1.5 bg-foreground text-background hover:bg-foreground/90" onClick={handleStartAnswer}>답변 시작<Mic className="h-4 w-4" /></Button>
-                )}
-                {answerState === "answering" && (
-                  <Button className="gap-1.5 bg-foreground text-background hover:bg-foreground/90" onClick={handleFinishAnswer}>답변 완료<CheckCircle2 className="h-4 w-4" /></Button>
-                )}
-                {answerState === "answered" && (
-                  <Button className="gap-1.5 bg-foreground text-background hover:bg-foreground/90" onClick={handleNextQuestion} disabled={isUploading}>
-                    {isUploading
-                      ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />업로드 중...</>
-                      : <>{currentQuestionIndex < totalQuestions - 1 ? "다음 질문" : "면접 종료"}<ArrowRight className="h-4 w-4" /></>
-                    }
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
       </main>
     </div>
   )
