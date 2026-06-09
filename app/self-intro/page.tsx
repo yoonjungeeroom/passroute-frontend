@@ -9,7 +9,7 @@ import { SelfIntroModal } from "@/components/dashboard/self-intro-modal"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { PenTool, Plus, Pencil, Play, FileText, Briefcase, Loader2 } from "lucide-react"
+import { PenTool, Plus, Pencil, Play, FileText, Briefcase, Loader2, BarChart3 } from "lucide-react"
 import { getSelfIntroList, type SelfIntroResponse } from "@/lib/api/self-intro"
 
 function formatDate(dateStr: string): string {
@@ -153,24 +153,35 @@ export default function SelfIntroPage() {
                       <p className="mb-3 text-xs text-muted-foreground">{formatDate(intro.updatedAt)} 업데이트</p>
 
                       {/* Actions */}
-                      <div className="mt-auto flex gap-2">
+                      <div className="mt-auto space-y-2">
                         <Button
-                          variant="secondary"
+                          variant="outline"
                           size="sm"
-                          className="flex-1 gap-1 border-border/50 bg-secondary/80 text-xs hover:bg-secondary"
-                          onClick={() => handleEdit(intro.id)}
+                          className="w-full gap-1 border-border/50 text-xs hover:bg-secondary/50"
+                          onClick={() => router.push(`/reports/self-intro/${intro.id}`)}
                         >
-                          <Pencil className="h-3 w-3" />
-                          수정
+                          <BarChart3 className="h-3 w-3" />
+                          리포트 보기
                         </Button>
-                        <Button
-                          size="sm"
-                          className="flex-1 gap-1 bg-primary text-xs text-white hover:opacity-90"
-                          onClick={() => router.push(`/dashboard?startInterview=${intro.id}`)}
-                        >
-                          <Play className="h-3 w-3" />
-                          면접 시작
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="flex-1 gap-1 border-border/50 bg-secondary/80 text-xs hover:bg-secondary"
+                            onClick={() => handleEdit(intro.id)}
+                          >
+                            <Pencil className="h-3 w-3" />
+                            수정
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="flex-1 gap-1 bg-primary text-xs text-white hover:opacity-90"
+                            onClick={() => router.push(`/dashboard?startInterview=${intro.id}`)}
+                          >
+                            <Play className="h-3 w-3" />
+                            면접 시작
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}
