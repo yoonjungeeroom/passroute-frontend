@@ -59,6 +59,9 @@ const STATE_TO_ROUND: Record<string, DebateRound> = {
   CLOSING_USER: "CLOSING",
 }
 
+// 실전모드 한 턴 제한시간(초). 연습모드엔 적용하지 않는다.
+const EXAM_TURN_LIMIT_SEC = 120
+
 const roundLabel: Record<DebateRound, string> = {
   OPENING: "개회",
   REBUTTAL_1: "반론1",
@@ -209,8 +212,33 @@ function DebatePageInner() {
   const competitorSpeaking =
     revealingSpeaker === "AI_COMPETITOR" ||
     (polling && !debateState?.waitingForUser && !revealing)
-  // 내 발언 미확정 버블 표시 — 말하는 중(라이브)이거나, 중지 후 확정/평가 대기 동안 그대로 유지(사라지지 않게).
-  const showPendingBubble = recording || (isPractice && (sttReady || awaitingEval || !!feedbackTurn))
+  // 내 발언 미확정 버블 표시 — 말하는 중(라이브)이거나, 녹음 완료 후(sttReady) 제출 전까지 그대로 유지.
+  // sttReady를 양 모드 공통으로 두어, 실전모드도 "녹음 완료"가 아니라 "제출" 시점에 사라진다(제출 시 setSttReady(false)).
+  const showPendingBubble = recording || sttReady || (isPractice && (awaitingEval || !!feedbackTurn))
+
+  // 실전모드 한 턴 제한시간(초). 시간 종료 시 입력만 잠그고(녹음 중지·버튼 비활성), 제출은 사용자가 직접 누른다.
+  const [turnTimeLeft, setTurnTimeLeft] = useState(EXAM_TURN_LIMIT_SEC)
+  // 사용자 입력 가능 구간(내 턴이면서 공개 큐 비워진 상태)
+  const userTurnActive = phase === "debating" && !!debateState?.waitingForUser && !revealing
+  const turnTimeUp = isExam && turnTimeLeft <= 0
+
+  // 실전모드: 새 사용자 턴이 시작되면(라운드 변경) 제한시간을 리셋
+  useEffect(() => {
+    if (!isExam) return
+    setTurnTimeLeft(EXAM_TURN_LIMIT_SEC)
+  }, [isExam, currentRound])
+
+  // 실전모드: 사용자 입력 구간에서만 1초씩 카운트다운 (AI 발언/대기 중엔 멈춤)
+  useEffect(() => {
+    if (!isExam || !userTurnActive || turnTimeLeft <= 0) return
+    const t = setTimeout(() => setTurnTimeLeft((s) => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [isExam, userTurnActive, turnTimeLeft])
+
+  // 시간 종료 시 녹음 강제 중지(입력 잠금). 제출은 사용자가 직접 누르게 둔다.
+  useEffect(() => {
+    if (turnTimeUp && recording) setRecording(false)
+  }, [turnTimeUp, recording])
 
   // 쿼리스트링 누락/오류 시 대시보드로 (모달을 거치지 않은 직접 접근)
   useEffect(() => {
@@ -987,8 +1015,8 @@ function DebatePageInner() {
               </div>
             )}
 
-            {/* 음성 건너뛰기 — 사회자/상대 TTS를 끝까지 듣지 않고 진행 */}
-            {revealing && (
+            {/* 음성 건너뛰기 — 사회자/상대 TTS를 끝까지 듣지 않고 진행 (연습모드만, 실전은 숨김) */}
+            {revealing && isPractice && (
               <div className="flex shrink-0 justify-center">
                 <button onClick={handleSkipAudio} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50">
                   <SkipForward className="h-3.5 w-3.5" />음성 건너뛰기
@@ -1038,13 +1066,26 @@ function DebatePageInner() {
                   </div>
                 ) : (
                   <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                    {/* 실전모드 제한시간 — 종료 시 입력만 잠금(녹음 버튼 비활성), 제출은 사용자가 직접 */}
+                    {isExam && (
+                      <div className="mb-2 flex items-center justify-between px-1">
+                        <span className="text-xs text-slate-500">제한 시간</span>
+                        <span className={cn(
+                          "font-mono text-sm font-bold tabular-nums",
+                          turnTimeUp ? "text-rose-500" : turnTimeLeft <= 30 ? "text-amber-600" : "text-slate-700"
+                        )}>
+                          {String(Math.floor(turnTimeLeft / 60)).padStart(2, "0")}:{String(turnTimeLeft % 60).padStart(2, "0")}
+                        </span>
+                      </div>
+                    )}
+                    {turnTimeUp && <p className="mb-2 px-1 text-xs font-medium text-rose-500">시간이 종료되었습니다. 제출 버튼을 눌러 다음으로 진행하세요.</p>}
                     {isPractice && sttFeedback && <p className="mb-2 px-1 text-xs text-amber-600">{sttFeedback}</p>}
                     {submitNotice && <p className="mb-2 px-1 text-xs text-rose-500">{submitNotice}</p>}
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant={recording ? "destructive" : "outline"}
                         onClick={() => { if (recording) { setRecording(false) } else { setSttReady(false); setSubmitNotice(null); setRecording(true) } }}
-                        disabled={submitting}
+                        disabled={submitting || turnTimeUp}
                         className="gap-2"
                       >
                         {recording ? (<><MicOff className="h-4 w-4" />녹음 완료</>) : (<><Mic className="h-4 w-4" />{sttTranscript ? "다시 녹음" : "녹음 시작"}</>)}
