@@ -60,6 +60,8 @@ export interface TurnFeedback {
 export interface DebateReportResponse {
   sessionId: number
   sessionScore: number
+  voiceAnalysis: VoiceAnalysis | null
+  faceAnalysis: FaceAnalysis | null
   overall: string
   strengths: string
   weaknesses: WeaknessItem[]
