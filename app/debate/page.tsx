@@ -903,11 +903,11 @@ function DebatePageInner() {
             {/* 나 (연습 모드 — 실전은 중앙 메인으로 이동) */}
             {isPractice && (
               <div className={cn(
-                "relative h-32 shrink-0 overflow-hidden rounded-lg border bg-slate-900 shadow-sm transition-all",
+                "relative flex-1 overflow-hidden rounded-lg border bg-slate-100 shadow-sm transition-all",
                 recording ? "border-rose-400 ring-2 ring-rose-400/20" : "border-slate-200"
               )}>
                 {mediaStream ? (
-                  <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-contain scale-x-[-1]" />
+                  <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" />
                 ) : (
                   <div className="flex h-full items-center justify-center"><User className="h-9 w-9 text-slate-300" /></div>
                 )}
@@ -968,9 +968,9 @@ function DebatePageInner() {
                 )}
               </div>
             ) : (
-              <div className="relative h-44 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-900 shadow-sm">
+              <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-sm">
                 {mediaStream ? (
-                  <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-contain scale-x-[-1]" />
+                  <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" />
                 ) : (
                   <div className="flex h-full items-center justify-center"><User className="h-20 w-20 text-slate-300" /></div>
                 )}
