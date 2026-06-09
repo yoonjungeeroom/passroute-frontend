@@ -218,22 +218,30 @@ function DebatePageInner() {
 
   // 실전모드 한 턴 제한시간(초). 시간 종료 시 입력만 잠그고(녹음 중지·버튼 비활성), 제출은 사용자가 직접 누른다.
   const [turnTimeLeft, setTurnTimeLeft] = useState(EXAM_TURN_LIMIT_SEC)
+  // 타이머는 "녹음 시작"을 처음 누른 시점부터 작동(생각하는 동안엔 흐르지 않게). 턴이 바뀌면 다시 false.
+  const [turnTimerStarted, setTurnTimerStarted] = useState(false)
   // 사용자 입력 가능 구간(내 턴이면서 공개 큐 비워진 상태)
   const userTurnActive = phase === "debating" && !!debateState?.waitingForUser && !revealing
-  const turnTimeUp = isExam && turnTimeLeft <= 0
+  const turnTimeUp = isExam && turnTimerStarted && turnTimeLeft <= 0
 
-  // 실전모드: 새 사용자 턴이 시작되면(라운드 변경) 제한시간을 리셋
+  // 실전모드: 새 사용자 턴이 시작되면(라운드 변경) 제한시간·타이머시작 플래그 리셋
   useEffect(() => {
     if (!isExam) return
     setTurnTimeLeft(EXAM_TURN_LIMIT_SEC)
+    setTurnTimerStarted(false)
   }, [isExam, currentRound])
 
-  // 실전모드: 사용자 입력 구간에서만 1초씩 카운트다운 (AI 발언/대기 중엔 멈춤)
+  // "녹음 시작"을 누르면 타이머 작동 시작(한 번 시작되면 그 턴 동안 유지 — 중지/재녹음해도 계속 흐름)
   useEffect(() => {
-    if (!isExam || !userTurnActive || turnTimeLeft <= 0) return
+    if (isExam && recording) setTurnTimerStarted(true)
+  }, [isExam, recording])
+
+  // 실전모드: 타이머 시작 후 내 턴 구간에서 1초씩 카운트다운 (AI 발언/대기 중엔 멈춤)
+  useEffect(() => {
+    if (!isExam || !turnTimerStarted || !userTurnActive || turnTimeLeft <= 0) return
     const t = setTimeout(() => setTurnTimeLeft((s) => s - 1), 1000)
     return () => clearTimeout(t)
-  }, [isExam, userTurnActive, turnTimeLeft])
+  }, [isExam, turnTimerStarted, userTurnActive, turnTimeLeft])
 
   // 시간 종료 시 녹음 강제 중지(입력 잠금). 제출은 사용자가 직접 누르게 둔다.
   useEffect(() => {
