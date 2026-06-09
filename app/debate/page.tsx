@@ -794,7 +794,7 @@ function DebatePageInner() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex h-screen flex-col bg-slate-50 overflow-hidden">
       {/* Top bar */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5">
         <div className="flex min-w-0 items-center gap-3">
@@ -917,7 +917,7 @@ function DebatePageInner() {
           </div>
 
           {/* Center: 사회자 멘트 + 발언 기록(연습) / 내 카메라(실전) + 컨트롤 */}
-          <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
             {latestInterviewerTurn && (
               <div className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                 <div className="mb-1.5 flex items-center gap-2">
