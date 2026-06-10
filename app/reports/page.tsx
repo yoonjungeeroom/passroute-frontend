@@ -7,14 +7,19 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { MobileHeader } from "@/components/dashboard/mobile-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ChevronDown, Search, X, Loader2 } from "lucide-react"
+import { ChevronDown, Search, X, Loader2, Trash2 } from "lucide-react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faBrain, faLightbulb } from "@fortawesome/free-solid-svg-icons"
 import { cn } from "@/lib/utils"
-import { getReportList, getInterviewReport, getDebateReport, type ReportListItem } from "@/lib/api/reports"
+import { getReportList, getInterviewReport, getDebateReport, deleteInterviewReport, deleteDebateReport, type ReportListItem } from "@/lib/api/reports"
 import { DebateReportView } from "@/components/reports/DebateReportView"
 import { InterviewReportView } from "@/components/reports/InterviewReportView"
 import { getWorstClip } from "@/lib/api/interview"
+import {
+  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
+  AlertDialogFooter, AlertDialogTitle, AlertDialogDescription,
+  AlertDialogCancel, AlertDialogAction,
+} from "@/components/ui/alert-dialog"
 import type { InterviewReportResponse, DebateReportResponse } from "@/types/report"
 
 function ScoreRing({ score, size = 64 }: { score: number; size?: number }) {
@@ -62,6 +67,7 @@ export default function ReportsPage() {
   const [selectedType, setSelectedType] = useState<"all" | "technical" | "personality" | "debate">("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [page, setPage] = useState(0)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchReports() {
@@ -113,6 +119,29 @@ export default function ReportsPage() {
       setExpandedDebateReport(null)
     } finally {
       setExpandedLoading(false)
+    }
+  }
+
+  async function handleDelete(report: ReportListItem) {
+    setDeleteError(null)
+    const prev = reports
+    // domainId가 면접/토론 간 겹칠 수 있어 reportType까지 함께 매칭해 정확히 한 건만 제거
+    setReports(list => list.filter(r => !(r.domainId === report.domainId && r.reportType === report.reportType)))
+    if (expandedId === report.domainId) {
+      setExpandedId(null)
+      setExpandedReport(null)
+      setExpandedDebateReport(null)
+      setWorstClip(null)
+    }
+    try {
+      if (report.reportType === "debate") {
+        await deleteDebateReport(report.domainId)
+      } else {
+        await deleteInterviewReport(report.domainId)
+      }
+    } catch {
+      setReports(prev) // 실패 시 롤백
+      setDeleteError("리포트 삭제에 실패했어요. 잠시 후 다시 시도해주세요.")
     }
   }
 
@@ -199,6 +228,9 @@ export default function ReportsPage() {
           </div>
 
           {/* Report Cards */}
+          {deleteError && (
+            <p className="mb-3 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-500">{deleteError}</p>
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -227,9 +259,10 @@ export default function ReportsPage() {
                   )}
                 >
                   {/* Card Header */}
+                  <div className="flex items-center">
                   <button
                     onClick={() => handleExpand(report)}
-                    className="flex w-full items-center gap-4 p-4 text-left"
+                    className="flex min-w-0 flex-1 items-center gap-4 p-4 text-left"
                   >
                     {/* Company Initial */}
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-sm font-semibold text-muted-foreground shrink-0">
@@ -265,6 +298,34 @@ export default function ReportsPage() {
                       expandedId === report.domainId && "rotate-180"
                     )} />
                   </button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <button
+                          aria-label="리포트 삭제"
+                          className="mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>이 리포트를 삭제할까요?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            {(report.companyName || report.jobPosition || "토론")} · {formatDate(report.date)} 기록과 분석 리포트가 삭제됩니다. 삭제하면 집계에서도 제외되며 되돌릴 수 없어요.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>취소</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDelete(report)}
+                            className="bg-red-500 text-white hover:bg-red-600"
+                          >
+                            삭제
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
 
                   {/* Expanded Detail */}
                   {expandedId === report.domainId && (
