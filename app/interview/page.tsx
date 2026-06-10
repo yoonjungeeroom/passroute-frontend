@@ -227,7 +227,6 @@ function LiveInterviewScreen({
 
   const handleNextQuestion = async () => {
     if (followUpQuestion) {
-      setFollowUpQuestion(null)
       setAnswerState("waiting")
       setAnswerTime(0)
       setReAnswerCount(0)
@@ -350,7 +349,7 @@ function LiveInterviewScreen({
               <Button className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700" onClick={handleNextQuestion} disabled={isUploading || isSubmitting}>
                 {isUploading
                   ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />업로드 중...</>
-                  : <>{currentQuestionIndex < totalQuestions - 1 ? "다음 질문" : "면접 종료"}<ArrowRight className="h-4 w-4" /></>
+                  : followUpQuestion ? <>꼬리질문 답변하기<ArrowRight className="h-4 w-4" /></> : <>{currentQuestionIndex < totalQuestions - 1 ? "다음 질문" : "면접 종료"}<ArrowRight className="h-4 w-4" /></>
                 }
               </Button>
             )}
