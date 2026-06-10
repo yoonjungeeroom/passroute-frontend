@@ -127,4 +127,6 @@ export interface SelfIntroReportResponse {
   topRecommendedQuestions: RecommendedQuestionCount[]
   readiness: ReadinessInfo | null
   growthSummary: string
+  // AI 종합 피드백 (cross-session). null이면 AI 실패/미배포 → growthSummary로 폴백.
+  aiSummary: { overall: string; repeatedWeakness: string; nextSteps: string } | null
 }
