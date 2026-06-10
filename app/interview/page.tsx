@@ -127,6 +127,7 @@ function LiveInterviewScreen({
   const [reAnswerCount, setReAnswerCount] = useState(0)
   const [followUpQuestion, setFollowUpQuestion] = useState<{ id: number; text: string; audioUrl?: string | null } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const pendingSubmitRef = useRef<Promise<AnswerProgressResponse> | null>(null)
 
   const currentQuestion: SessionQuestion | undefined = followUpQuestion
     ? { questionId: followUpQuestion.id, questionText: followUpQuestion.text, questionOrder: -1, audioUrl: followUpQuestion.audioUrl }
@@ -207,12 +208,14 @@ function LiveInterviewScreen({
     if (!currentQuestion) return
     setAnswerState("answered")
     setIsSubmitting(true)
+    const promise = submitAnswer(sessionId, {
+      questionId: currentQuestion.questionId,
+      answerText: lastTranscriptRef.current || transcript,
+      voiceData: wpm > 0 ? { filler_word_count: fillerCount, wpm } : undefined,
+    })
+    pendingSubmitRef.current = promise
     try {
-      const result: AnswerProgressResponse = await submitAnswer(sessionId, {
-        questionId: currentQuestion.questionId,
-        answerText: lastTranscriptRef.current || transcript,
-        voiceData: wpm > 0 ? { filler_word_count: fillerCount, wpm } : undefined,
-      })
+      const result: AnswerProgressResponse = await promise
       if (result.hasFollowUp && result.followUpQuestionId && result.followUpQuestionText) {
         setFollowUpQuestion({ id: result.followUpQuestionId, text: result.followUpQuestionText, audioUrl: result.audioUrl })
       } else {
@@ -226,6 +229,11 @@ function LiveInterviewScreen({
   }
 
   const handleNextQuestion = async () => {
+    // 마지막 답변 제출(submitAnswer)이 끝나야 답변 레코드가 생성되어
+    // 못한구간 클립 저장(saveWorstClip)이 정상 동작함
+    if (pendingSubmitRef.current) {
+      await pendingSubmitRef.current.catch(() => {})
+    }
     if (followUpQuestion) {
       setAnswerState("waiting")
       setAnswerTime(0)
@@ -240,9 +248,15 @@ function LiveInterviewScreen({
     } else {
       try {
         await endInterview(sessionId)
+      } catch (err) {
+        console.error("[interview] endInterview failed", err)
+      }
+      try {
         const clip = await uploadWorstClip(sessionId)
         if (clip) await saveWorstClip(sessionId, clip.url, clip.score, clip.questionId, clip.reason)
-      } catch { /* ignore */ }
+      } catch (err) {
+        console.error("[interview] worst clip save failed", err)
+      }
       onEnd()
     }
   }

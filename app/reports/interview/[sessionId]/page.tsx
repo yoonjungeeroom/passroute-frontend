@@ -51,7 +51,7 @@ function InterviewReportContent() {
         } else {
           setReport(result)
           // 최악 클립은 별도 조회 (실패해도 무시)
-          getWorstClip(sessionId).then(clip => { if (!cancelled) setWorstClip(clip) }).catch(() => {})
+          getWorstClip(sessionId).then(clip => { if (!cancelled) setWorstClip(clip) }).catch((err) => console.error("[interview-report] getWorstClip failed", err))
           setStatus("done")
         }
       } catch {
