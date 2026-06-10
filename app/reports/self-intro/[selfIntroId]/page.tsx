@@ -250,7 +250,7 @@ function SelfIntroReportContent() {
             </div>
 
             {/* 준비 상태 + 성장 요약 */}
-            {(readiness || report.growthSummary) && (
+            {(readiness || report.growthSummary || report.aiSummary) && (
               <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 p-5">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-primary" />
@@ -261,8 +261,22 @@ function SelfIntroReportContent() {
                     </Badge>
                   )}
                 </div>
-                {report.growthSummary && (
-                  <p className="mt-2 text-sm leading-relaxed text-foreground">{report.growthSummary}</p>
+                {report.aiSummary ? (
+                  <div className="mt-2 space-y-3">
+                    <p className="text-sm leading-relaxed text-foreground">{report.aiSummary.overall}</p>
+                    <div>
+                      <h4 className="mb-1 text-xs font-semibold text-muted-foreground">반복되는 약점</h4>
+                      <p className="text-sm leading-relaxed text-foreground">{report.aiSummary.repeatedWeakness}</p>
+                    </div>
+                    <div>
+                      <h4 className="mb-1 text-xs font-semibold text-muted-foreground">다음 연습 방향</h4>
+                      <p className="text-sm leading-relaxed text-foreground">{report.aiSummary.nextSteps}</p>
+                    </div>
+                  </div>
+                ) : (
+                  report.growthSummary && (
+                    <p className="mt-2 text-sm leading-relaxed text-foreground">{report.growthSummary}</p>
+                  )
                 )}
                 {report.readiness?.comment && (
                   <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{report.readiness.comment}</p>
