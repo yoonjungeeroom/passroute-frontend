@@ -126,6 +126,7 @@ function LiveInterviewScreen({
   const [isPaused, setIsPaused] = useState(false)
   const [reAnswerCount, setReAnswerCount] = useState(0)
   const [followUpQuestion, setFollowUpQuestion] = useState<{ id: number; text: string; audioUrl?: string | null } | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const currentQuestion: SessionQuestion | undefined = followUpQuestion
     ? { questionId: followUpQuestion.id, questionText: followUpQuestion.text, questionOrder: -1, audioUrl: followUpQuestion.audioUrl }
@@ -205,6 +206,7 @@ function LiveInterviewScreen({
   const handleFinishAnswer = async () => {
     if (!currentQuestion) return
     setAnswerState("answered")
+    setIsSubmitting(true)
     try {
       const result: AnswerProgressResponse = await submitAnswer(sessionId, {
         questionId: currentQuestion.questionId,
@@ -218,6 +220,8 @@ function LiveInterviewScreen({
       }
     } catch {
       setFollowUpQuestion(null)
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -343,7 +347,7 @@ function LiveInterviewScreen({
               <Button className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700" onClick={handleFinishAnswer}>답변 완료<CheckCircle2 className="h-4 w-4" /></Button>
             )}
             {answerState === "answered" && (
-              <Button className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700" onClick={handleNextQuestion} disabled={isUploading}>
+              <Button className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700" onClick={handleNextQuestion} disabled={isUploading || isSubmitting}>
                 {isUploading
                   ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />업로드 중...</>
                   : <>{currentQuestionIndex < totalQuestions - 1 ? "다음 질문" : "면접 종료"}<ArrowRight className="h-4 w-4" /></>
