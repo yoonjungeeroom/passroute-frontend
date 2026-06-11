@@ -222,11 +222,11 @@ function LiveInterviewScreen({
         setAnswerState("waiting")
         setAnswerTime(0)
         setReAnswerCount(0)
-      } else {
-        setFollowUpQuestion(null)
       }
+      // hasFollowUp이 false면 followUpQuestion을 그대로 두고, "다음 질문" 클릭 시
+      // (handleNextQuestion에서) 정리하여 방금 답변한 질문 화면이 그대로 유지되게 함
     } catch {
-      setFollowUpQuestion(null)
+      // 실패 시에도 화면 전환 없이 현재 질문 화면 유지
     } finally {
       setIsSubmitting(false)
     }
@@ -238,6 +238,7 @@ function LiveInterviewScreen({
     if (pendingSubmitRef.current) {
       await pendingSubmitRef.current.catch(() => {})
     }
+    setFollowUpQuestion(null)
     if (currentQuestionIndex < totalQuestions - 1) {
       setCurrentQuestionIndex((prev) => prev + 1)
       setAnswerState("waiting")
