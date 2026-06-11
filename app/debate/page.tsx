@@ -96,6 +96,7 @@ function DebatePageInner() {
   const topicIdParam = searchParams?.get("topicId")
   const stanceParam = searchParams?.get("stance") as "PRO" | "CON" | null
   const personaIdParam = searchParams?.get("personaId")
+  const introIdParam = searchParams?.get("introId")
   const difficultyParam = searchParams?.get("difficulty") as "EASY" | "NORMAL" | "HARD" | null
   const topicTitleParam = searchParams?.get("topicTitle") // 생성 주제는 정적 목록에 없어 배너 제목 폴백용
   // 연습/실전 모드. modal이 "practice" | "real"로 전달 (real = 실전/EXAM). 누락 시 연습으로 간주.
@@ -105,6 +106,7 @@ function DebatePageInner() {
   // 쿼리스트링을 한 번만 안전하게 파싱 (누락/비숫자는 NaN, 잘못된 stance는 false)
   const topicId = topicIdParam ? Number(topicIdParam) : NaN
   const personaId = personaIdParam ? Number(personaIdParam) : NaN
+  const introId = introIdParam ? Number(introIdParam) : NaN
   const isValidStance = stanceParam === "PRO" || stanceParam === "CON"
 
   // Pre-check state
@@ -482,6 +484,7 @@ function DebatePageInner() {
         personaId,
         difficulty: selectedDifficulty,
         mode: isExam ? "real" : "practice",
+        ...(isNaN(introId) ? {} : { introId }),
       })
       setSessionId(res.sessionId)
       if (isExam) {

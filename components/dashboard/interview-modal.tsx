@@ -197,6 +197,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
   const [selectedPortfolio, setSelectedPortfolio] = useState<number | null>(null)
   const [loadingDocs, setLoadingDocs] = useState(false)
   // 토론
+  const [selectedDebateIntro, setSelectedDebateIntro] = useState<number | null>(null)
   const [debateTopics, setDebateTopics] = useState<DebateTopic[]>([])
   const [debatePersonas, setDebatePersonas] = useState<DebatePersona[]>([])
   const [selectedTopic, setSelectedTopic] = useState<DebateTopic | null>(null)
@@ -244,7 +245,11 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
       setKeywordInput("")
     }
     try {
-      const res = await suggestDebateTopics({ keywords: finalKeywords, count: suggestCount })
+      const res = await suggestDebateTopics({
+        keywords: finalKeywords,
+        count: suggestCount,
+        ...(selectedDebateIntro !== null ? { introId: selectedDebateIntro } : {}),
+      })
       setCandidates(res.candidates)
       setNewsCount(res.newsCount)
       if (res.candidates.length === 0) {
@@ -266,6 +271,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
         title: selectedCandidate.title,
         description: selectedCandidate.description,
         category: selectedCandidate.category,
+        ...(selectedDebateIntro !== null ? { introId: selectedDebateIntro } : {}),
       })
       setGeneratedTopic(topic)
       setSelectedTopic(topic) // 이후 3~5단계는 기존 selectedTopic.id 흐름 그대로
@@ -336,6 +342,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
       setSelectedMode(null)
       setSelectedPracticeMode("practice")
       setSelectedIntro(null)
+      setSelectedDebateIntro(null)
       setSelectedStage(null)
       setSelectedPersonas([])
       setSelectedResume(null)
@@ -358,8 +365,10 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
     }, 200)
   }
 
+  const totalSteps = isGroup ? 6 : 5
+
   const handleNext = () => {
-    if (step < 5) setStep(step + 1)
+    if (step < totalSteps) setStep(step + 1)
   }
 
   const handleBack = () => {
@@ -390,21 +399,23 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
   const canProceed =
     (step === 1 && selectedMode !== null) ||
     (isGroup
-      ? (step === 2 && selectedTopic !== null) ||
-        (step === 3 && selectedStance !== null) ||
-        (step === 4 && selectedDebatePersona !== null) ||
-        step === 5
+      ? (step === 2 && selectedDebateIntro !== null) ||
+        (step === 3 && selectedTopic !== null) ||
+        (step === 4 && selectedStance !== null) ||
+        (step === 5 && selectedDebatePersona !== null) ||
+        step === 6
       : (step === 2 && selectedIntro !== null) ||
         (step === 3 && selectedStage !== null) ||
         step === 4 || // Persona is optional
         step === 5)
 
   const currentIntro = selfIntros.find(i => i.id === selectedIntro)
+  const currentDebateIntro = selfIntros.find(i => i.id === selectedDebateIntro)
   const currentStage = interviewStages.find(s => s.id === selectedStage)
   const currentMode = interviewModes.find(m => m.id === selectedMode)
 
   const stepLabels = isGroup
-    ? ["면접 방식", "토론 주제", "입장 선택", "토론 상대", "난이도 · 확인"]
+    ? ["면접 방식", "자기소개서 선택", "토론 주제", "입장 선택", "토론 상대", "난이도 · 확인"]
     : ["면접 방식", "자기소개서 선택", "면접 단계", "면접관 페르소나", "최종 확인"]
 
   const categories = [...new Set(debateTopics.map(t => t.category))]
@@ -431,7 +442,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
 
         {/* Clickable Progress Indicator */}
         <div className="flex items-center gap-1.5 py-2">
-          {[1, 2, 3, 4, 5].map((s) => (
+          {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
             <button
               key={s}
               onClick={() => goToStep(s)}
@@ -954,9 +965,66 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
 
           {/* ===================== 토론 분기 ===================== */}
 
-          {/* Step 2 (토론): Topic Selection */}
+          {/* Step 2 (토론): Self Introduction Selection */}
           {step === 2 && isGroup && (
+            <div className="space-y-3">
+              <p className="mb-4 text-sm text-muted-foreground">
+                토론에 참고할 자기소개서를 선택해주세요. 선택한 자기소개서의 기업 관련 뉴스를 참고해 주제를 추천/생성합니다.
+              </p>
+              {loadingIntros ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                </div>
+              ) : selfIntros.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  자기소개서가 없습니다. 먼저 자기소개서를 작성해주세요.
+                </div>
+              ) : selfIntros.map((intro) => (
+                <div
+                  key={intro.id}
+                  onClick={() => setSelectedDebateIntro(intro.id)}
+                  className={cn(
+                    "flex cursor-pointer items-center gap-4 rounded-xl border p-4 transition-all duration-300",
+                    selectedDebateIntro === intro.id
+                      ? "border-primary/50 bg-primary/10"
+                      : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                  )}
+                >
+                  <div className={cn(
+                    "flex h-10 w-10 items-center justify-center rounded-lg",
+                    selectedDebateIntro === intro.id
+                      ? "bg-primary text-white"
+                      : "bg-secondary text-muted-foreground"
+                  )}>
+                    <Building2 className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-foreground">{intro.companyName}</p>
+                      <Badge variant="outline" className="text-[10px] border-border">{careerLabels[intro.careerLevel] ?? intro.careerLevel}</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {intro.jobPosition} &middot; {intro.itemCount}개 문항
+                    </p>
+                  </div>
+                  {selectedDebateIntro === intro.id && (
+                    <Badge className="border-primary/30 bg-primary/20 text-primary">선택됨</Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Step 3 (토론): Topic Selection */}
+          {step === 3 && isGroup && (
             <div className="space-y-4">
+              {currentDebateIntro && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Newspaper className="h-3.5 w-3.5" />
+                  <span>{currentDebateIntro.companyName}</span> 관련 뉴스를 참고합니다
+                </div>
+              )}
+
               {/* 목록 / 최신 이슈 추천 전환 */}
               <div className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-secondary/30 p-1">
                 <button
@@ -1203,8 +1271,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
             </div>
           )}
 
-          {/* Step 3 (토론): Stance Selection */}
-          {step === 3 && isGroup && (
+          {/* Step 4 (토론): Stance Selection */}
+          {step === 4 && isGroup && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">{selectedTopic?.title}</p>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -1265,8 +1333,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
             </div>
           )}
 
-          {/* Step 4 (토론): Persona Selection */}
-          {step === 4 && isGroup && (
+          {/* Step 5 (토론): Persona Selection */}
+          {step === 5 && isGroup && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">토론 상대를 선택해주세요</p>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -1294,8 +1362,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
             </div>
           )}
 
-          {/* Step 5 (토론): Difficulty + Confirm */}
-          {step === 5 && isGroup && (
+          {/* Step 6 (토론): Difficulty + Confirm */}
+          {step === 6 && isGroup && (
             <div className="space-y-6">
               <div className="text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary">
@@ -1316,6 +1384,12 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                     {selectedPracticeMode === "practice" ? "연습 모드" : "실전 모드"}
                   </Badge>
                 </div>
+                {currentDebateIntro && (
+                  <div className="flex items-center justify-between py-2 border-b border-border/30">
+                    <span className="text-sm text-muted-foreground">참고 기업</span>
+                    <span className="text-sm font-medium text-foreground">{currentDebateIntro.companyName}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between py-2 border-b border-border/30">
                   <span className="text-sm text-muted-foreground">주제</span>
                   <span className="text-sm font-medium text-foreground text-right">{selectedTopic?.title}</span>
@@ -1365,6 +1439,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                     mode: selectedPracticeMode,
                     topicTitle: selectedTopic.title,
                   })
+                  if (selectedDebateIntro !== null) q.set("introId", String(selectedDebateIntro))
                   router.push(`/debate?${q.toString()}`)
                 }}
                 className="w-full gap-2 py-6 text-base font-semibold bg-foreground text-background shadow-lg hover:bg-foreground/90"
@@ -1377,7 +1452,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
         </div>
 
         {/* Navigation Buttons */}
-        {step <= 5 && (
+        {step <= totalSteps && (
           <div className="flex justify-between gap-3 border-t border-border/30 pt-4">
             <Button
               variant="ghost"
@@ -1388,7 +1463,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
               <ArrowLeft className="h-4 w-4" />
               이전
             </Button>
-            {step < 5 && (
+            {step < totalSteps && (
               <Button
                 onClick={handleNext}
                 disabled={!canProceed}
