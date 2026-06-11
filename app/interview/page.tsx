@@ -371,15 +371,37 @@ function LiveInterviewScreen({
         </div>
       </div>
 
-      {/* Main: 내 카메라(메인) + AI 면접관 PIP + 분석 패널 */}
-      <main className="flex flex-1 gap-3 overflow-hidden p-3">
-        {/* Stage — 내 카메라 (크게) */}
-        <div className="relative flex-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-sm">
-          {stream ? (
-            <video ref={userVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full items-center justify-center"><User className="h-20 w-20 text-slate-300" /></div>
-          )}
+      {/* Main: AI 면접관 + 내 카메라를 4:3 고정 비율로 좌우 나란히 + 분석 패널 */}
+      <main className="flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
+        {/* Stage — 두 카메라를 4:3 고정 비율로 중앙에 나란히 (높이는 남는 공간에 맞춰 줄어듦) */}
+        <div className="flex min-w-0 flex-1 items-center justify-center overflow-hidden">
+          <div className="flex h-full min-h-0 items-center justify-center gap-4">
+            {/* AI 면접관 — 아바타 영상 자리 (4:3) */}
+            <div className="relative aspect-[4/3] h-[min(52vh,440px,calc(100vh-300px))] shrink-0 overflow-hidden rounded-2xl border border-slate-300 bg-slate-100 shadow-sm">
+              <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
+              <div className="relative flex h-full flex-col items-center justify-center gap-2 text-slate-400">
+                <Video className="h-7 w-7 opacity-70" />
+                <span className="font-mono text-[11px]">아바타 영상 자리</span>
+              </div>
+              {answerState === "waiting" && (
+                <div className="absolute left-0 right-0 top-5 flex items-end justify-center gap-[3px]">
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <span key={i} className="w-[3px] rounded-full bg-blue-600" style={{ height: 18, animation: "waveBar 0.9s ease-in-out infinite", animationDelay: `${i * 70}ms` }} />
+                  ))}
+                </div>
+              )}
+              <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-lg bg-white/85 px-2.5 py-1 text-[12px] font-semibold text-slate-700 shadow-sm backdrop-blur-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />AI 면접관
+              </div>
+            </div>
+
+            {/* 내 카메라 (4:3) */}
+            <div className="relative aspect-[4/3] h-[min(52vh,440px,calc(100vh-300px))] shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-sm">
+              {stream ? (
+                <video ref={userVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full items-center justify-center"><User className="h-20 w-20 text-slate-300" /></div>
+              )}
 
           {/* REC */}
           {answerState === "answering" && (
@@ -390,26 +412,7 @@ function LiveInterviewScreen({
           )}
 
           {/* self tag */}
-          <div className="absolute bottom-4 left-4 rounded-lg bg-slate-900/55 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">나 · 응시자</div>
-
-          {/* AI 면접관 PIP — 아바타 영상 자리 (추후 영상 삽입) */}
-          <div className="absolute right-4 top-4 h-36 w-52 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-lg">
-            <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
-            <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
-              <Video className="h-6 w-6 opacity-70" />
-              <span className="font-mono text-[10px]">아바타 영상 자리</span>
-            </div>
-            {answerState === "waiting" && (
-              <div className="absolute left-0 right-0 top-3 flex items-end justify-center gap-[3px]">
-                {Array.from({ length: 12 }).map((_, i) => (
-                  <span key={i} className="w-[3px] rounded-full bg-blue-600" style={{ height: 16, animation: "waveBar 0.9s ease-in-out infinite", animationDelay: `${i * 70}ms` }} />
-                ))}
-              </div>
-            )}
-            <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-white/85 px-2 py-1 text-[11px] font-semibold text-slate-700 backdrop-blur-sm">
-              <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />AI 면접관
-            </div>
-          </div>
+              <div className="absolute bottom-3 left-3 rounded-lg bg-slate-900/55 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">나 · 응시자</div>
 
           {/* feedback toast (practice) */}
           {mode === "practice" && (sttFeedback || faceFeedback) && (
@@ -423,7 +426,7 @@ function LiveInterviewScreen({
 
           {/* mic level (answering) */}
           {answerState === "answering" && (
-            <div className="absolute bottom-4 left-1/2 w-72 max-w-[60%] -translate-x-1/2">
+            <div className="absolute bottom-12 left-1/2 w-48 max-w-[70%] -translate-x-1/2">
               <div className="flex items-center gap-2 rounded-lg bg-white/85 px-3 py-2 shadow-lg backdrop-blur-sm">
                 <Mic className="h-4 w-4 text-blue-600" />
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
@@ -432,6 +435,8 @@ function LiveInterviewScreen({
               </div>
             </div>
           )}
+            </div>
+          </div>
         </div>
 
         {/* Side analysis (practice only) */}

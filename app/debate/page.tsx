@@ -890,8 +890,9 @@ function DebatePageInner() {
           <div className="flex w-60 shrink-0 flex-col gap-3">
             {/* 사회자 — 아바타 영상 자리 */}
             <div className={cn(
-              "relative flex-1 overflow-hidden rounded-lg border bg-white shadow-sm transition-all",
-              revealingSpeaker === "AI_INTERVIEWER" ? "border-blue-500 ring-2 ring-blue-500/20" : "border-slate-200"
+              "relative overflow-hidden rounded-lg border shadow-sm transition-all",
+              isPractice ? "flex-1 bg-white" : "aspect-[4/3] w-full shrink-0 bg-slate-100",
+              revealingSpeaker === "AI_INTERVIEWER" ? "border-blue-500 ring-2 ring-blue-500/20" : (isPractice ? "border-slate-200" : "border-slate-300")
             )}>
               <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
               <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
@@ -912,8 +913,9 @@ function DebatePageInner() {
 
             {/* 상대 토론자 — 아바타 영상 자리 */}
             <div className={cn(
-              "relative flex-1 overflow-hidden rounded-lg border bg-white shadow-sm transition-all",
-              competitorSpeaking ? "border-blue-500 ring-2 ring-blue-500/20" : "border-slate-200"
+              "relative overflow-hidden rounded-lg border shadow-sm transition-all",
+              isPractice ? "flex-1 bg-white" : "aspect-[4/3] w-full shrink-0 bg-slate-100",
+              competitorSpeaking ? "border-blue-500 ring-2 ring-blue-500/20" : (isPractice ? "border-slate-200" : "border-slate-300")
             )}>
               <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
               <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
@@ -1006,21 +1008,24 @@ function DebatePageInner() {
                 )}
               </div>
             ) : (
-              <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-sm">
-                {mediaStream ? (
-                  <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" />
-                ) : (
-                  <div className="flex h-full items-center justify-center"><User className="h-20 w-20 text-slate-300" /></div>
-                )}
-                {recording && (
-                  <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-slate-900/55 px-3 py-1 backdrop-blur-sm">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
-                    <span className="text-xs font-bold tracking-wider text-white">REC</span>
+              <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+                {/* 실전 — 내 카메라를 4:3 고정 비율로 중앙에 (하단 입력·제한시간이 떠도 크기 불변) */}
+                <div className="relative aspect-[4/3] h-[min(50vh,460px,calc(100vh-380px))] shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-sm">
+                  {mediaStream ? (
+                    <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center"><User className="h-20 w-20 text-slate-300" /></div>
+                  )}
+                  {recording && (
+                    <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-slate-900/55 px-3 py-1 backdrop-blur-sm">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+                      <span className="text-xs font-bold tracking-wider text-white">REC</span>
+                    </div>
+                  )}
+                  <div className="absolute bottom-4 left-4 rounded-lg bg-slate-900/55 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">나 · {selectedStance === "PRO" ? "찬성" : "반대"}</div>
+                  <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full bg-slate-900/55 whitespace-nowrap px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
+                    <Lock className="h-3 w-3" />발언 내용은 종료 후 리포트에서 확인
                   </div>
-                )}
-                <div className="absolute bottom-4 left-4 rounded-lg bg-slate-900/55 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">나 · {selectedStance === "PRO" ? "찬성" : "반대"}</div>
-                <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full bg-slate-900/55 whitespace-nowrap px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
-                  <Lock className="h-3 w-3" />발언 내용은 종료 후 리포트에서 확인
                 </div>
               </div>
             )}
