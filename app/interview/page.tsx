@@ -218,6 +218,10 @@ function LiveInterviewScreen({
       const result: AnswerProgressResponse = await promise
       if (result.hasFollowUp && result.followUpQuestionId && result.followUpQuestionText) {
         setFollowUpQuestion({ id: result.followUpQuestionId, text: result.followUpQuestionText, audioUrl: result.audioUrl })
+        // 꼬리질문은 별도 안내 없이 바로 "답변 시작" 버튼으로 이어서 답변
+        setAnswerState("waiting")
+        setAnswerTime(0)
+        setReAnswerCount(0)
       } else {
         setFollowUpQuestion(null)
       }
@@ -233,12 +237,6 @@ function LiveInterviewScreen({
     // 못한구간 클립 저장(saveWorstClip)이 정상 동작함
     if (pendingSubmitRef.current) {
       await pendingSubmitRef.current.catch(() => {})
-    }
-    if (followUpQuestion) {
-      setAnswerState("waiting")
-      setAnswerTime(0)
-      setReAnswerCount(0)
-      return
     }
     if (currentQuestionIndex < totalQuestions - 1) {
       setCurrentQuestionIndex((prev) => prev + 1)
@@ -345,7 +343,7 @@ function LiveInterviewScreen({
               {isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
               {isPaused ? "재개" : "일시정지"}
             </Button>
-            {mode === "practice" && answerState === "answered" && !followUpQuestion && (
+            {mode === "practice" && answerState === "answered" && (
               <>
                 <Button variant="ghost" size="sm" className="gap-1 text-xs" onClick={handleRetryAnswer}><RotateCcw className="h-3 w-3" />다시 답변</Button>
                 <Button variant="ghost" size="sm" className="gap-1 text-xs" onClick={handleSkipQuestion}><SkipForward className="h-3 w-3" />넘어가기</Button>
@@ -363,7 +361,7 @@ function LiveInterviewScreen({
               <Button className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700" onClick={handleNextQuestion} disabled={isUploading || isSubmitting}>
                 {isUploading
                   ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />업로드 중...</>
-                  : followUpQuestion ? <>꼬리질문 답변하기<ArrowRight className="h-4 w-4" /></> : <>{currentQuestionIndex < totalQuestions - 1 ? "다음 질문" : "면접 종료"}<ArrowRight className="h-4 w-4" /></>
+                  : <>{currentQuestionIndex < totalQuestions - 1 ? "다음 질문" : "면접 종료"}<ArrowRight className="h-4 w-4" /></>
                 }
               </Button>
             )}
