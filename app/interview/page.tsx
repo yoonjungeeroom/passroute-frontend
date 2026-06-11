@@ -282,15 +282,16 @@ function LiveInterviewScreen({
       {/* Top Bar */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-sm bg-blue-600" />
-            <span className="text-[15px] font-bold tracking-tight text-slate-900">passroute</span>
+          <span className="text-[15px] font-bold tracking-tight text-slate-900">passroute</span>
+          {(company || role) && <div className="h-4 w-px bg-slate-200" />}
+          <div className="flex min-w-0 items-center gap-2 text-sm">
+            {company && <span className="truncate font-semibold text-slate-900">{company}</span>}
+            {company && role && <span className="shrink-0 text-slate-300">ㅣ</span>}
+            {role && <span className="truncate text-slate-500">{role}</span>}
+            {(company || role) && <span className="shrink-0 text-slate-300">ㅣ</span>}
+            <span className="shrink-0 font-medium text-slate-500">{mode === "practice" ? "연습모드" : "실전모드"}</span>
+            {stage && <span className="ml-1 shrink-0 whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-500">{stage}</span>}
           </div>
-          {company && <div className="h-4 w-px bg-slate-200" />}
-          {company && <span className="truncate text-sm font-semibold text-slate-900">{company}</span>}
-          {role && <div className="h-4 w-px bg-slate-200" />}
-          {role && <span className="truncate text-sm text-slate-500">{role}</span>}
-          {stage && <span className="shrink-0 whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-500">{stage}</span>}
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {mode === "practice" && (
