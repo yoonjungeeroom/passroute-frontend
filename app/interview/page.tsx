@@ -204,41 +204,7 @@ function LiveInterviewScreen({
     if (mode === "real") setReAnswerCount(reAnswerCount + 1)
   }
 
-  const handleFinishAnswer = async () => {
-    if (!currentQuestion) return
-    setAnswerState("answered")
-    setIsSubmitting(true)
-    const promise = submitAnswer(sessionId, {
-      questionId: currentQuestion.questionId,
-      answerText: lastTranscriptRef.current || transcript,
-      voiceData: wpm > 0 ? { filler_word_count: fillerCount, wpm } : undefined,
-    })
-    pendingSubmitRef.current = promise
-    try {
-      const result: AnswerProgressResponse = await promise
-      if (result.hasFollowUp && result.followUpQuestionId && result.followUpQuestionText) {
-        setFollowUpQuestion({ id: result.followUpQuestionId, text: result.followUpQuestionText, audioUrl: result.audioUrl })
-        // 꼬리질문은 별도 안내 없이 바로 "답변 시작" 버튼으로 이어서 답변
-        setAnswerState("waiting")
-        setAnswerTime(0)
-        setReAnswerCount(0)
-      }
-      // hasFollowUp이 false면 followUpQuestion을 그대로 두고, "다음 질문" 클릭 시
-      // (handleNextQuestion에서) 정리하여 방금 답변한 질문 화면이 그대로 유지되게 함
-    } catch {
-      // 실패 시에도 화면 전환 없이 현재 질문 화면 유지
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const handleNextQuestion = async () => {
-    // 마지막 답변 제출(submitAnswer)이 끝나야 답변 레코드가 생성되어
-    // 못한구간 클립 저장(saveWorstClip)이 정상 동작함
-    if (pendingSubmitRef.current) {
-      await pendingSubmitRef.current.catch(() => {})
-    }
-    setFollowUpQuestion(null)
+  const advanceToNextQuestion = async () => {
     if (currentQuestionIndex < totalQuestions - 1) {
       setCurrentQuestionIndex((prev) => prev + 1)
       setAnswerState("waiting")
@@ -258,6 +224,47 @@ function LiveInterviewScreen({
       }
       onEnd()
     }
+  }
+
+  const handleFinishAnswer = async () => {
+    if (!currentQuestion) return
+    const wasFollowUp = followUpQuestion !== null
+    setAnswerState("answered")
+    setIsSubmitting(true)
+    const promise = submitAnswer(sessionId, {
+      questionId: currentQuestion.questionId,
+      answerText: lastTranscriptRef.current || transcript,
+      voiceData: wpm > 0 ? { filler_word_count: fillerCount, wpm } : undefined,
+    })
+    pendingSubmitRef.current = promise
+    try {
+      const result: AnswerProgressResponse = await promise
+      if (result.hasFollowUp && result.followUpQuestionId && result.followUpQuestionText) {
+        setFollowUpQuestion({ id: result.followUpQuestionId, text: result.followUpQuestionText, audioUrl: result.audioUrl })
+        // 꼬리질문은 별도 안내 없이 바로 "답변 시작" 버튼으로 이어서 답변
+        setAnswerState("waiting")
+        setAnswerTime(0)
+        setReAnswerCount(0)
+      } else if (wasFollowUp) {
+        // 꼬리질문에 더 이상 꼬리질문이 없으면 "다음 질문" 클릭 없이 바로 다음 질문으로 진행
+        setFollowUpQuestion(null)
+        await advanceToNextQuestion()
+      }
+    } catch {
+      // 실패 시에도 화면 전환 없이 현재 질문 화면 유지
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleNextQuestion = async () => {
+    // 마지막 답변 제출(submitAnswer)이 끝나야 답변 레코드가 생성되어
+    // 못한구간 클립 저장(saveWorstClip)이 정상 동작함
+    if (pendingSubmitRef.current) {
+      await pendingSubmitRef.current.catch(() => {})
+    }
+    setFollowUpQuestion(null)
+    await advanceToNextQuestion()
   }
 
   const handleRetryAnswer = () => {
