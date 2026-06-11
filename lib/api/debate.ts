@@ -86,6 +86,7 @@ export interface SuggestTopicsResponse {
 export async function suggestDebateTopics(data: {
   keywords?: string[]
   count?: number
+  introId?: number
 }): Promise<SuggestTopicsResponse> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 120_000)
@@ -109,6 +110,7 @@ export async function generateDebateTopic(data: {
   title: string
   description?: string
   category: string
+  introId?: number
 }): Promise<DebateTopic> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 190_000)
@@ -146,6 +148,7 @@ export async function createDebateSession(data: {
   personaId: number
   difficulty: "EASY" | "NORMAL" | "HARD"
   mode: DebateMode // 백엔드 @NotNull — 누락 시 400
+  introId?: number
 }): Promise<DebateSessionCreateResponse> {
   return apiFetch<DebateSessionCreateResponse>(
     "/debate/sessions",
