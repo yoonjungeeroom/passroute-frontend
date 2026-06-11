@@ -27,6 +27,8 @@ import {
   Code,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Settings2,
   Building2,
   CheckCircle,
@@ -140,7 +142,7 @@ const personas: {
     icon: Briefcase,
     description: "기술 선택 이유, 프로젝트 진위, 문제 해결",
     defaults: { pressure: 6, followUp: 5, difficulty: "HARD" },
-    color: "bg-foreground",
+    color: "bg-blue-600",
   },
   {
     id: "EXECUTIVE",
@@ -149,7 +151,7 @@ const personas: {
     icon: Crown,
     description: "동기, 태도, 성장 가능성, 조직 적합성",
     defaults: { pressure: 5, followUp: 4, difficulty: "NORMAL" },
-    color: "bg-foreground",
+    color: "bg-blue-600",
   },
   {
     id: "HR_MANAGER",
@@ -158,7 +160,7 @@ const personas: {
     icon: Heart,
     description: "갈등 해결, 피드백 수용, 가치관",
     defaults: { pressure: 3, followUp: 4, difficulty: "EASY" },
-    color: "bg-foreground",
+    color: "bg-blue-600",
   },
   {
     id: "TECH_INTERVIEWER",
@@ -167,7 +169,7 @@ const personas: {
     icon: Code,
     description: "아키텍처, 트레이드오프, 예외 상황 대응",
     defaults: { pressure: 6, followUp: 5, difficulty: "HARD" },
-    color: "bg-foreground",
+    color: "bg-blue-600",
   },
 ]
 
@@ -188,6 +190,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
     difficulty: "NORMAL" as const,
   })
   const [interviewCount, setInterviewCount] = useState(5)
+  const [personaIdx, setPersonaIdx] = useState(0)
+  const [dpIdx, setDpIdx] = useState(0)
   const [starting, setStarting] = useState(false)
   const [selfIntros, setSelfIntros] = useState<SelfIntroResponse[]>([])
   const [loadingIntros, setLoadingIntros] = useState(false)
@@ -328,12 +332,33 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
     }
   }, [selectedPersonas])
 
-  // 기술면접 선택 시 4단계에서 기술면접관 자동 배정
+  // 4단계 진입 시 면접관 자동 선택/배정 (기술면접관은 자동, 인성 계열은 첫 번째 기본 선택)
   useEffect(() => {
-    if (step === 4 && !isGroup && selectedStage === "technical") {
-      setSelectedPersonas(["TECH_INTERVIEWER"])
+    if (step === 4 && !isGroup) {
+      if (selectedStage === "technical") {
+        setSelectedPersonas(["TECH_INTERVIEWER"])
+        setPersonaIdx(0)
+      } else {
+        const valid = filteredPersonas.some(p => selectedPersonas.includes(p.id))
+        if (!valid) {
+          const first = filteredPersonas[0]
+          if (first) {
+            setSelectedPersonas([first.id])
+            setSettings(first.defaults)
+            setPersonaIdx(0)
+          }
+        }
+      }
     }
-  }, [step, isGroup, selectedStage])
+  }, [step, isGroup, selectedStage]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 5단계(토론) 진입 시 토론 상대 첫 번째 기본 선택
+  useEffect(() => {
+    if (step === 5 && isGroup && debatePersonas.length > 0 && !selectedDebatePersona) {
+      setSelectedDebatePersona(debatePersonas[0])
+      setDpIdx(0)
+    }
+  }, [step, isGroup, debatePersonas]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClose = () => {
     onOpenChange(false)
@@ -382,19 +407,6 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
     }
   }
 
-  const togglePersona = (personaId: string) => {
-    setSelectedPersonas(prev => {
-      if (prev.includes(personaId)) {
-        return prev.filter(id => id !== personaId)
-      } else {
-        // 1:1은 1명만 선택
-        if (prev.length >= 1) {
-          return [personaId]
-        }
-        return [...prev, personaId]
-      }
-    })
-  }
 
   const canProceed =
     (step === 1 && selectedMode !== null) ||
@@ -430,12 +442,12 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto border-border bg-card sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto border-slate-200 bg-white sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-xl font-semibold text-foreground">
+          <DialogTitle className="text-xl font-semibold text-slate-900">
             면접 시작하기
           </DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground">
+          <DialogDescription className="text-sm text-slate-500">
             면접 방식과 설정을 선택하고 AI 모의 면접을 시작하세요
           </DialogDescription>
         </DialogHeader>
@@ -450,16 +462,16 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
               className={cn(
                 "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition-all duration-300",
                 s === step
-                  ? "bg-primary text-white"
+                  ? "bg-blue-600 text-white"
                   : s < step
-                  ? "bg-primary/20 text-primary hover:bg-primary/30 cursor-pointer"
-                  : "bg-secondary text-muted-foreground cursor-not-allowed"
+                  ? "bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer"
+                  : "bg-slate-100 text-slate-500 cursor-not-allowed"
               )}
             >
               {s < step ? <Check className="h-3.5 w-3.5" /> : s}
             </button>
           ))}
-          <div className="ml-3 text-sm text-muted-foreground">
+          <div className="ml-3 text-sm text-slate-500">
             {stepLabels[step - 1]}
           </div>
         </div>
@@ -471,7 +483,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
             <div className="space-y-6">
               {/* Practice vs Real Mode */}
               <div>
-                <h4 className="mb-3 text-sm font-medium text-foreground">모드 선택</h4>
+                <h4 className="mb-3 text-sm font-medium text-slate-900">모드 선택</h4>
                 <div className="grid grid-cols-2 gap-3">
                   {practiceModes.map((mode) => {
                     const Icon = mode.icon
@@ -483,24 +495,24 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                         className={cn(
                           "relative flex items-center gap-3 rounded-xl border p-4 transition-all duration-200",
                           isSelected
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                            ? "border-blue-600 bg-blue-50"
+                            : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
                         )}
                       >
                         <div className={cn(
                           "flex h-10 w-10 items-center justify-center rounded-lg",
                           isSelected
-                            ? "bg-primary text-white"
-                            : "bg-secondary text-muted-foreground"
+                            ? "bg-blue-600 text-white"
+                            : "bg-slate-100 text-slate-500"
                         )}>
                           <Icon className="h-5 w-5" />
                         </div>
                         <div className="text-left">
-                          <p className="text-sm font-medium text-foreground">{mode.title}</p>
-                          <p className="text-[11px] text-muted-foreground">{mode.description}</p>
+                          <p className="text-sm font-medium text-slate-900">{mode.title}</p>
+                          <p className="text-[11px] text-slate-500">{mode.description}</p>
                         </div>
                         {isSelected && (
-                          <div className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white">
+                          <div className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white">
                             <Check className="h-3 w-3" />
                           </div>
                         )}
@@ -512,7 +524,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
 
               {/* 1:1 vs Group */}
               <div>
-                <h4 className="mb-3 text-sm font-medium text-foreground">면접 방식</h4>
+                <h4 className="mb-3 text-sm font-medium text-slate-900">면접 방식</h4>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {interviewModes.map((mode) => {
                     const Icon = mode.icon
@@ -529,24 +541,24 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                         className={cn(
                           "relative flex flex-col items-center gap-3 rounded-2xl border-2 p-6 text-center transition-all duration-300",
                           isSelected
-                            ? "border-primary bg-primary/10 shadow-lg shadow-primary/10"
-                            : "border-border hover:border-primary/40 hover:bg-secondary/50"
+                            ? "border-blue-600 bg-blue-50 shadow-md shadow-blue-600/10"
+                            : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
                         )}
                       >
                         <div className={cn(
                           "flex h-14 w-14 items-center justify-center rounded-2xl transition-all",
                           isSelected
-                            ? "bg-primary text-white"
-                            : "bg-secondary text-muted-foreground"
+                            ? "bg-blue-600 text-white"
+                            : "bg-slate-100 text-slate-500"
                         )}>
                           <Icon className="h-7 w-7" />
                         </div>
                         <div>
-                          <p className="text-base font-semibold text-foreground">{mode.title}</p>
-                          <p className="mt-1 text-sm text-muted-foreground">{mode.description}</p>
+                          <p className="text-base font-semibold text-slate-900">{mode.title}</p>
+                          <p className="mt-1 text-sm text-slate-500">{mode.description}</p>
                         </div>
                         {isSelected && (
-                          <div className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-white">
+                          <div className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white">
                             <Check className="h-4 w-4" />
                           </div>
                         )}
@@ -563,15 +575,15 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
           {/* Step 2 (1:1): Self Introduction Selection */}
           {step === 2 && !isGroup && (
             <div className="space-y-3">
-              <p className="mb-4 text-sm text-muted-foreground">
+              <p className="mb-4 text-sm text-slate-500">
                 면접에 사용할 자기소개서를 선택해주세요
               </p>
               {loadingIntros ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
                 </div>
               ) : selfIntros.length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
+                <div className="py-8 text-center text-sm text-slate-500">
                   자기소개서가 없습니다. 먼저 자기소개서를 작성해주세요.
                 </div>
               ) : selfIntros.map((intro) => (
@@ -581,54 +593,54 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                   className={cn(
                     "flex cursor-pointer items-center gap-4 rounded-xl border p-4 transition-all duration-300",
                     selectedIntro === intro.id
-                      ? "border-primary/50 bg-primary/10"
-                      : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                      ? "border-blue-600 bg-blue-50"
+                      : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
                   )}
                 >
                   <div className={cn(
                     "flex h-10 w-10 items-center justify-center rounded-lg",
                     selectedIntro === intro.id
-                      ? "bg-primary text-white"
-                      : "bg-secondary text-muted-foreground"
+                      ? "bg-blue-600 text-white"
+                      : "bg-slate-100 text-slate-500"
                   )}>
                     <Building2 className="h-5 w-5" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="font-semibold text-foreground">{intro.companyName}</p>
-                      <Badge variant="outline" className="text-[10px] border-border">{careerLabels[intro.careerLevel] ?? intro.careerLevel}</Badge>
+                      <p className="font-semibold text-slate-900">{intro.companyName}</p>
+                      <Badge variant="outline" className="text-[10px] border-slate-200">{careerLabels[intro.careerLevel] ?? intro.careerLevel}</Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-slate-500">
                       {intro.jobPosition} &middot; {intro.itemCount}개 문항
                     </p>
                   </div>
                   {selectedIntro === intro.id && (
-                    <Badge className="border-primary/30 bg-primary/20 text-primary">선택됨</Badge>
+                    <Badge className="border-blue-200 bg-blue-100 text-blue-700">선택됨</Badge>
                   )}
                 </div>
               ))}
 
               {/* 이력서 / 포트폴리오 선택 */}
               {selectedIntro !== null && (
-                <div className="mt-6 space-y-4 border-t border-border/30 pt-4">
-                  <p className="text-sm text-muted-foreground">
+                <div className="mt-6 space-y-4 border-t border-slate-100 pt-4">
+                  <p className="text-sm text-slate-500">
                     이력서 / 포트폴리오 선택 <span className="text-xs">(선택하지 않으면 대표 문서 사용)</span>
                   </p>
 
                   {loadingDocs ? (
                     <div className="flex items-center justify-center py-4">
-                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-3">
                       {/* 이력서 */}
                       <div className="space-y-2">
-                        <p className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                        <p className="flex items-center gap-1.5 text-xs font-medium text-slate-900">
                           <FileText className="h-3.5 w-3.5" />
                           이력서
                         </p>
                         {resumes.length === 0 ? (
-                          <p className="text-[11px] text-muted-foreground">등록된 이력서가 없습니다</p>
+                          <p className="text-[11px] text-slate-500">등록된 이력서가 없습니다</p>
                         ) : resumes.map((doc) => (
                           <button
                             key={doc.id}
@@ -636,16 +648,16 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                             className={cn(
                               "flex w-full items-center gap-2 rounded-lg border p-2.5 text-left text-xs transition-all",
                               selectedResume === doc.id
-                                ? "border-primary/50 bg-primary/10"
-                                : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                                ? "border-blue-600 bg-blue-50"
+                                : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
                             )}
                           >
-                            <span className="flex-1 truncate text-foreground">{doc.originalFilename}</span>
+                            <span className="flex-1 truncate text-slate-900">{doc.originalFilename}</span>
                             {doc.isRepresentative && (
                               <Badge variant="outline" className="text-[9px] shrink-0">대표</Badge>
                             )}
                             {selectedResume === doc.id && (
-                              <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                              <Check className="h-3.5 w-3.5 shrink-0 text-blue-600" />
                             )}
                           </button>
                         ))}
@@ -653,12 +665,12 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
 
                       {/* 포트폴리오 */}
                       <div className="space-y-2">
-                        <p className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                        <p className="flex items-center gap-1.5 text-xs font-medium text-slate-900">
                           <FolderOpen className="h-3.5 w-3.5" />
                           포트폴리오
                         </p>
                         {portfolios.length === 0 ? (
-                          <p className="text-[11px] text-muted-foreground">등록된 포트폴리오가 없습니다</p>
+                          <p className="text-[11px] text-slate-500">등록된 포트폴리오가 없습니다</p>
                         ) : portfolios.map((doc) => (
                           <button
                             key={doc.id}
@@ -666,16 +678,16 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                             className={cn(
                               "flex w-full items-center gap-2 rounded-lg border p-2.5 text-left text-xs transition-all",
                               selectedPortfolio === doc.id
-                                ? "border-primary/50 bg-primary/10"
-                                : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                                ? "border-blue-600 bg-blue-50"
+                                : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
                             )}
                           >
-                            <span className="flex-1 truncate text-foreground">{doc.originalFilename}</span>
+                            <span className="flex-1 truncate text-slate-900">{doc.originalFilename}</span>
                             {doc.isRepresentative && (
                               <Badge variant="outline" className="text-[9px] shrink-0">대표</Badge>
                             )}
                             {selectedPortfolio === doc.id && (
-                              <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                              <Check className="h-3.5 w-3.5 shrink-0 text-blue-600" />
                             )}
                           </button>
                         ))}
@@ -690,7 +702,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
           {/* Step 3 (1:1): Interview Stage */}
           {step === 3 && !isGroup && (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-slate-500">
                 면접 단계를 선택해주세요
               </p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -701,8 +713,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                     className={cn(
                       "flex flex-col items-center gap-1 rounded-xl border p-3 text-center transition-all duration-200",
                       selectedStage === stage.id
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border text-muted-foreground hover:border-primary/30 hover:bg-secondary/50"
+                        ? "border-blue-600 bg-blue-50 text-slate-900"
+                        : "border-slate-200 text-slate-500 hover:border-blue-300 hover:bg-slate-50"
                     )}
                   >
                     <span className="text-sm font-medium">{stage.title}</span>
@@ -712,9 +724,9 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
               </div>
 
               {selectedIntro && (
-                <div className="mt-6 rounded-lg border border-border/30 bg-secondary/30 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">선택된 자기소개서</p>
-                  <p className="text-sm font-medium text-foreground">
+                <div className="mt-6 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500 mb-1">선택된 자기소개서</p>
+                  <p className="text-sm font-medium text-slate-900">
                     {currentIntro?.companyName} - {currentIntro?.jobPosition}
                   </p>
                 </div>
@@ -726,53 +738,92 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
           {step === 4 && !isGroup && (
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-slate-500">
                   {selectedStage === "technical"
                     ? "기술 면접관이 자동으로 배정됩니다"
                     : "AI 면접관의 성향을 선택해주세요"}
                 </p>
                 {selectedStage !== "technical" && (
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <p className="mt-1 text-xs text-slate-500">
                     선택하지 않으면 기본 면접관으로 진행됩니다
                   </p>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {filteredPersonas.map((persona) => {
-                  const Icon = persona.icon
-                  const isSelected = selectedPersonas.includes(persona.id)
-                  const isAutoSelected = selectedStage === "technical"
-                  return (
-                    <button
-                      key={persona.id}
-                      onClick={() => !isAutoSelected && togglePersona(persona.id)}
-                      className={cn(
-                        "relative flex flex-col items-center gap-2 rounded-xl border p-3 text-center transition-all duration-200",
-                        isSelected
-                          ? "border-primary bg-primary/10"
-                          : "border-border hover:border-primary/30 hover:bg-secondary/50"
-                      )}
-                    >
-                      <div className={cn(
-                        "flex h-10 w-10 items-center justify-center rounded-lg",
-                        isSelected ? persona.color : "bg-secondary",
-                        isSelected ? "text-white" : "text-muted-foreground"
-                      )}>
-                        <Icon className="h-5 w-5" />
+              {(() => {
+                const isTech = selectedStage === "technical"
+                const list = filteredPersonas
+                const idx = Math.min(personaIdx, Math.max(list.length - 1, 0))
+                const p = list[idx] ?? list[0]
+                const Icon = p?.icon ?? Briefcase
+                const multi = list.length > 1
+                const selectAt = (i: number) => {
+                  const n = list.length
+                  if (!n) return
+                  const j = ((i % n) + n) % n
+                  setPersonaIdx(j)
+                  setSelectedPersonas([list[j].id])
+                  setSettings(list[j].defaults)
+                }
+                if (!p) return null
+                return (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => selectAt(idx - 1)}
+                        className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700", !multi && "invisible")}
+                      >
+                        <ChevronLeft className="h-[18px] w-[18px]" />
+                      </button>
+                      <div className="flex flex-1 gap-4 rounded-2xl border-2 border-blue-600 bg-blue-50/40 p-4 shadow-sm">
+                        <div className="relative aspect-[3/4] w-40 shrink-0 overflow-hidden rounded-xl bg-slate-100">
+                          <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 9px, rgba(100,116,139,0.08) 9px 18px)" }} />
+                          <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
+                            <Icon className="h-8 w-8" />
+                            <span className="text-[9px]">면접관 이미지</span>
+                          </div>
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/55 to-transparent p-2.5">
+                            <span className="block truncate text-sm font-bold text-white drop-shadow">{p.title}</span>
+                          </div>
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-[15px] font-bold text-slate-900">{p.title}</p>
+                              <p className="mt-0.5 text-xs text-slate-500">{p.subtitle}</p>
+                            </div>
+                            <span className="flex shrink-0 items-center gap-1 rounded-full bg-blue-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                              <Check className="h-3 w-3" />{isTech ? "자동 배정" : "선택됨"}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-xs leading-relaxed text-slate-600">{p.description}</p>
+                        </div>
                       </div>
-                      <span className="text-xs font-medium text-foreground">{persona.title}</span>
-                      <span className="text-[10px] text-muted-foreground">{persona.subtitle}</span>
-                    </button>
-                  )
-                })}
-              </div>
+                      <button
+                        type="button"
+                        onClick={() => selectAt(idx + 1)}
+                        className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700", !multi && "invisible")}
+                      >
+                        <ChevronRight className="h-[18px] w-[18px]" />
+                      </button>
+                    </div>
+                    {multi && (
+                      <div className="flex items-center justify-center gap-1.5">
+                        {list.map((_, i) => (
+                          <span key={i} className={cn("h-1.5 rounded-full transition-all", i === idx ? "w-4 bg-blue-600" : "w-1.5 bg-slate-300")} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* Advanced Settings */}
               {selectedPersonas.length > 0 && (
                 <div className="mt-4">
                   <button
                     onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="flex w-full items-center justify-between rounded-lg border border-border bg-secondary/30 px-4 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary/50"
+                    className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-500 transition-colors hover:bg-slate-50"
                   >
                     <span className="flex items-center gap-2">
                       <Settings2 className="h-4 w-4" />
@@ -782,36 +833,36 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                   </button>
 
                   {showAdvanced && (
-                    <div className="mt-3 space-y-4 rounded-lg border border-border bg-secondary/20 p-4">
+                    <div className="mt-3 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
                       {/* 압박 강도 (0~10) */}
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <Label className="text-xs text-muted-foreground">압박 강도</Label>
-                          <span className="text-xs font-medium text-foreground">{settings.pressure}/10</span>
+                          <Label className="text-xs text-slate-500">압박 강도</Label>
+                          <span className="text-xs font-medium text-slate-900">{settings.pressure}/10</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="w-12 text-[10px] text-muted-foreground">편안함</span>
+                          <span className="w-12 text-[10px] text-slate-500">편안함</span>
                           <Slider value={[settings.pressure]} onValueChange={(v) => setSettings(prev => ({ ...prev, pressure: v[0] }))} max={10} min={0} step={1} className="flex-1" />
-                          <span className="w-12 text-right text-[10px] text-muted-foreground">압박</span>
+                          <span className="w-12 text-right text-[10px] text-slate-500">압박</span>
                         </div>
                       </div>
 
                       {/* 꼬리질문 (0~5) */}
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <Label className="text-xs text-muted-foreground">꼬리질문</Label>
-                          <span className="text-xs font-medium text-foreground">{settings.followUp}/5</span>
+                          <Label className="text-xs text-slate-500">꼬리질문</Label>
+                          <span className="text-xs font-medium text-slate-900">{settings.followUp}/5</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="w-12 text-[10px] text-muted-foreground">적음</span>
+                          <span className="w-12 text-[10px] text-slate-500">적음</span>
                           <Slider value={[settings.followUp]} onValueChange={(v) => setSettings(prev => ({ ...prev, followUp: v[0] }))} max={5} min={0} step={1} className="flex-1" />
-                          <span className="w-12 text-right text-[10px] text-muted-foreground">많음</span>
+                          <span className="w-12 text-right text-[10px] text-slate-500">많음</span>
                         </div>
                       </div>
 
                       {/* 난이도 (EASY/NORMAL/HARD) */}
                       <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground">난이도</Label>
+                        <Label className="text-xs text-slate-500">난이도</Label>
                         <div className="grid grid-cols-3 gap-2">
                           {([["EASY", "기본"], ["NORMAL", "보통"], ["HARD", "심화"]] as const).map(([val, label]) => (
                             <button
@@ -821,8 +872,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                               className={cn(
                                 "h-9 rounded-lg border text-xs font-medium transition-all",
                                 settings.difficulty === val
-                                  ? "bg-primary/10 border-primary text-primary"
-                                  : "border-border text-muted-foreground hover:border-primary/30"
+                                  ? "bg-blue-50 border-blue-600 text-blue-700"
+                                  : "border-slate-200 text-slate-500 hover:border-blue-300"
                               )}
                             >
                               {label}
@@ -834,13 +885,13 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                       {/* 질문 개수 (1~20) */}
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <Label className="text-xs text-muted-foreground">질문 개수</Label>
-                          <span className="text-xs font-medium text-foreground">{interviewCount}개</span>
+                          <Label className="text-xs text-slate-500">질문 개수</Label>
+                          <span className="text-xs font-medium text-slate-900">{interviewCount}개</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="w-12 text-[10px] text-muted-foreground">1개</span>
+                          <span className="w-12 text-[10px] text-slate-500">1개</span>
                           <Slider value={[interviewCount]} onValueChange={(v) => setInterviewCount(v[0])} max={20} min={1} step={1} className="flex-1" />
-                          <span className="w-12 text-right text-[10px] text-muted-foreground">20개</span>
+                          <span className="w-12 text-right text-[10px] text-slate-500">20개</span>
                         </div>
                       </div>
                     </div>
@@ -854,52 +905,52 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
           {step === 5 && !isGroup && (
             <div className="space-y-6">
               <div className="text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-600">
                   <CheckCircle className="h-8 w-8 text-white" />
                 </div>
-                <h3 className="text-lg font-semibold text-foreground">면접 준비 완료</h3>
-                <p className="mt-1 text-sm text-muted-foreground">설정을 확인하고 면접을 시작하세요</p>
+                <h3 className="text-lg font-semibold text-slate-900">면접 준비 완료</h3>
+                <p className="mt-1 text-sm text-slate-500">설정을 확인하고 면접을 시작하세요</p>
               </div>
 
-              <div className="space-y-3 rounded-xl border border-border bg-secondary/30 p-4">
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-sm text-muted-foreground">자기소개서</span>
-                  <span className="text-sm font-medium text-foreground">
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500">자기소개서</span>
+                  <span className="text-sm font-medium text-slate-900">
                     {currentIntro?.companyName} - {currentIntro?.jobPosition}
                   </span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-sm text-muted-foreground">면접 단계</span>
-                  <span className="text-sm font-medium text-foreground">{currentStage?.title}</span>
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500">면접 단계</span>
+                  <span className="text-sm font-medium text-slate-900">{currentStage?.title}</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-sm text-muted-foreground">모드</span>
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500">모드</span>
                   <Badge variant="outline" className={cn(
                     selectedPracticeMode === "practice"
-                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                      : "bg-rose-500/20 text-rose-400 border-rose-500/30"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-rose-50 text-rose-700 border-rose-200"
                   )}>
                     {selectedPracticeMode === "practice" ? "연습 모드" : "실전 모드"}
                   </Badge>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-sm text-muted-foreground">면접 방식</span>
-                  <span className="text-sm font-medium text-foreground">{currentMode?.title}</span>
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500">면접 방식</span>
+                  <span className="text-sm font-medium text-slate-900">{currentMode?.title}</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-sm text-muted-foreground">이력서</span>
-                  <span className="text-sm font-medium text-foreground">
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500">이력서</span>
+                  <span className="text-sm font-medium text-slate-900">
                     {selectedResume ? resumes.find(d => d.id === selectedResume)?.originalFilename : resumes.find(d => d.isRepresentative)?.originalFilename ?? "없음"}
                   </span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-sm text-muted-foreground">포트폴리오</span>
-                  <span className="text-sm font-medium text-foreground">
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500">포트폴리오</span>
+                  <span className="text-sm font-medium text-slate-900">
                     {selectedPortfolio ? portfolios.find(d => d.id === selectedPortfolio)?.originalFilename : portfolios.find(d => d.isRepresentative)?.originalFilename ?? "없음"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between py-2">
-                  <span className="text-sm text-muted-foreground">면접관 성향</span>
+                  <span className="text-sm text-slate-500">면접관 성향</span>
                   <div className="flex gap-1">
                     {selectedPersonas.length > 0 ? (
                       selectedPersonas.map(pId => {
@@ -909,7 +960,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                         ) : null
                       })
                     ) : (
-                      <span className="text-sm text-muted-foreground">기본 설정</span>
+                      <span className="text-sm text-slate-500">기본 설정</span>
                     )}
                   </div>
                 </div>
@@ -953,7 +1004,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                   }
                 }}
                 disabled={starting}
-                className="w-full gap-2 py-6 text-base font-semibold bg-foreground text-background shadow-lg hover:bg-foreground/90"
+                className="w-full gap-2 py-6 text-base font-semibold bg-blue-600 text-white shadow-sm hover:bg-blue-700"
               >
                 {starting ? (
                   <>
@@ -975,15 +1026,15 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
           {/* Step 2 (토론): Self Introduction Selection */}
           {step === 2 && isGroup && (
             <div className="space-y-3">
-              <p className="mb-4 text-sm text-muted-foreground">
+              <p className="mb-4 text-sm text-slate-500">
                 토론에 참고할 자기소개서를 선택해주세요. 선택한 자기소개서의 기업 관련 뉴스를 참고해 주제를 추천/생성합니다.
               </p>
               {loadingIntros ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
                 </div>
               ) : selfIntros.length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
+                <div className="py-8 text-center text-sm text-slate-500">
                   자기소개서가 없습니다. 먼저 자기소개서를 작성해주세요.
                 </div>
               ) : selfIntros.map((intro) => (
@@ -993,29 +1044,29 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                   className={cn(
                     "flex cursor-pointer items-center gap-4 rounded-xl border p-4 transition-all duration-300",
                     selectedDebateIntro === intro.id
-                      ? "border-primary/50 bg-primary/10"
-                      : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                      ? "border-blue-600 bg-blue-50"
+                      : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
                   )}
                 >
                   <div className={cn(
                     "flex h-10 w-10 items-center justify-center rounded-lg",
                     selectedDebateIntro === intro.id
-                      ? "bg-primary text-white"
-                      : "bg-secondary text-muted-foreground"
+                      ? "bg-blue-600 text-white"
+                      : "bg-slate-100 text-slate-500"
                   )}>
                     <Building2 className="h-5 w-5" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="font-semibold text-foreground">{intro.companyName}</p>
-                      <Badge variant="outline" className="text-[10px] border-border">{careerLabels[intro.careerLevel] ?? intro.careerLevel}</Badge>
+                      <p className="font-semibold text-slate-900">{intro.companyName}</p>
+                      <Badge variant="outline" className="text-[10px] border-slate-200">{careerLabels[intro.careerLevel] ?? intro.careerLevel}</Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-slate-500">
                       {intro.jobPosition} &middot; {intro.itemCount}개 문항
                     </p>
                   </div>
                   {selectedDebateIntro === intro.id && (
-                    <Badge className="border-primary/30 bg-primary/20 text-primary">선택됨</Badge>
+                    <Badge className="border-blue-200 bg-blue-100 text-blue-700">선택됨</Badge>
                   )}
                 </div>
               ))}
@@ -1026,19 +1077,19 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
           {step === 3 && isGroup && (
             <div className="space-y-4">
               {currentDebateIntro && (
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
                   <Newspaper className="h-3.5 w-3.5" />
                   <span>{currentDebateIntro.companyName}</span> 관련 뉴스를 참고합니다
                 </div>
               )}
 
               {/* 목록 / 최신 이슈 추천 전환 */}
-              <div className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-secondary/30 p-1">
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1">
                 <button
                   onClick={() => setTopicMode("list")}
                   className={cn(
                     "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-all",
-                    topicMode === "list" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+                    topicMode === "list" ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-900"
                   )}
                 >
                   주제 목록
@@ -1047,7 +1098,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                   onClick={() => setTopicMode("suggest")}
                   className={cn(
                     "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-all",
-                    topicMode === "suggest" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+                    topicMode === "suggest" ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-900"
                   )}
                 >
                   <Sparkles className="h-4 w-4" />
@@ -1059,7 +1110,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
               {topicMode === "list" && (
                 loadingDebate ? (
                   <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
                   </div>
                 ) : (
                   <>
@@ -1093,21 +1144,21 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                           className={cn(
                             "rounded-xl border p-4 text-left transition-all",
                             selectedTopic?.id === topic.id
-                              ? "border-primary bg-primary/10"
-                              : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                              ? "border-blue-600 bg-blue-50"
+                              : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
                           )}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <h3 className="text-sm font-semibold text-foreground">{topic.title}</h3>
+                            <h3 className="text-sm font-semibold text-slate-900">{topic.title}</h3>
                             <Badge variant="outline" className="shrink-0 text-[10px]">{categoryLabel[topic.category] ?? topic.category}</Badge>
                           </div>
-                          <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{topic.description}</p>
+                          <p className="mt-1.5 line-clamp-2 text-xs text-slate-500">{topic.description}</p>
                         </button>
                       ))}
                     </div>
 
                     {filteredTopics.length === 0 && (
-                      <p className="py-8 text-center text-sm text-muted-foreground">주제가 없습니다</p>
+                      <p className="py-8 text-center text-sm text-slate-500">주제가 없습니다</p>
                     )}
                   </>
                 )
@@ -1118,23 +1169,23 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                 generatedTopic ? (
                   /* 생성 완료 — 이후 다음 단계로 진행 */
                   <div className="space-y-4">
-                    <div className="rounded-xl border border-primary/50 bg-primary/10 p-4">
+                    <div className="rounded-xl border border-blue-600 bg-blue-50 p-4">
                       <div className="mb-1.5 flex items-center gap-2">
-                        <CheckCircle className="h-4 w-4 text-primary" />
-                        <span className="text-xs font-medium text-primary">생성된 주제</span>
+                        <CheckCircle className="h-4 w-4 text-blue-600" />
+                        <span className="text-xs font-medium text-blue-600">생성된 주제</span>
                         <Badge variant="outline" className="ml-auto shrink-0 text-[10px]">
                           {categoryLabel[generatedTopic.category] ?? generatedTopic.category}
                         </Badge>
                       </div>
-                      <h3 className="text-sm font-semibold text-foreground">{generatedTopic.title}</h3>
-                      <p className="mt-1.5 text-xs text-muted-foreground">{generatedTopic.description}</p>
+                      <h3 className="text-sm font-semibold text-slate-900">{generatedTopic.title}</h3>
+                      <p className="mt-1.5 text-xs text-slate-500">{generatedTopic.description}</p>
                       {(generatedTopic.proKeyPoints?.length > 0 || generatedTopic.conKeyPoints?.length > 0) && (
                         <div className="mt-3 grid grid-cols-2 gap-3">
                           <div>
                             <p className="mb-1 text-[11px] font-medium text-blue-500">찬성 논거</p>
                             <ul className="space-y-0.5">
                               {(generatedTopic.proKeyPoints ?? []).slice(0, 3).map((p, i) => (
-                                <li key={i} className="text-[11px] text-muted-foreground">- {p}</li>
+                                <li key={i} className="text-[11px] text-slate-500">- {p}</li>
                               ))}
                             </ul>
                           </div>
@@ -1142,7 +1193,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                             <p className="mb-1 text-[11px] font-medium text-rose-500">반대 논거</p>
                             <ul className="space-y-0.5">
                               {(generatedTopic.conKeyPoints ?? []).slice(0, 3).map((p, i) => (
-                                <li key={i} className="text-[11px] text-muted-foreground">- {p}</li>
+                                <li key={i} className="text-[11px] text-slate-500">- {p}</li>
                               ))}
                             </ul>
                           </div>
@@ -1155,7 +1206,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                         setSelectedTopic(null)
                         setSelectedCandidate(null)
                       }}
-                      className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                      className="text-xs text-slate-500 underline-offset-2 hover:underline"
                     >
                       다른 주제로 다시 추천받기
                     </button>
@@ -1164,14 +1215,14 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                   <div className="space-y-4">
                     {/* 키워드 입력 */}
                     <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-slate-500">
                         관심 키워드를 넣으면 더 맞춤한 주제를 추천해요 <span className="text-xs">(선택)</span>
                       </p>
                       <div className="flex flex-wrap items-center gap-2">
                         {keywords.map(kw => (
                           <Badge key={kw} variant="secondary" className="gap-1 pr-1 text-xs">
                             {kw}
-                            <button onClick={() => setKeywords(prev => prev.filter(k => k !== kw))} className="rounded-full p-0.5 hover:bg-foreground/10">
+                            <button onClick={() => setKeywords(prev => prev.filter(k => k !== kw))} className="rounded-full p-0.5 hover:bg-slate-200/60">
                               <X className="h-3 w-3" />
                             </button>
                           </Badge>
@@ -1183,7 +1234,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                             if (e.key === "Enter") { e.preventDefault(); addKeyword(keywordInput) }
                           }}
                           placeholder="키워드 입력 후 Enter"
-                          className="min-w-[120px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
+                          className="min-w-[120px] flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
                         />
                       </div>
                       <div className="flex flex-wrap gap-1.5">
@@ -1191,7 +1242,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                           <button
                             key={p}
                             onClick={() => addKeyword(p)}
-                            className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+                            className="rounded-full border border-slate-200 px-2.5 py-1 text-xs text-slate-500 transition-colors hover:border-blue-300 hover:text-slate-900"
                           >
                             + {p}
                           </button>
@@ -1201,7 +1252,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
 
                     {/* 추천 개수 */}
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-muted-foreground">추천 개수</span>
+                      <span className="text-sm text-slate-500">추천 개수</span>
                       <div className="flex gap-1.5">
                         {[1, 2, 3, 4, 5].map(n => (
                           <button
@@ -1210,8 +1261,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                             className={cn(
                               "h-8 w-8 rounded-lg border text-xs font-medium transition-all",
                               suggestCount === n
-                                ? "border-primary bg-primary/10 text-primary"
-                                : "border-border text-muted-foreground hover:border-primary/30"
+                                ? "border-blue-600 bg-blue-50 text-blue-600"
+                                : "border-slate-200 text-slate-500 hover:border-blue-300"
                             )}
                           >
                             {n}
@@ -1236,9 +1287,9 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
 
                     {/* 후보 목록 */}
                     {candidates.length > 0 && (
-                      <div className="space-y-3 border-t border-border/30 pt-4">
+                      <div className="space-y-3 border-t border-slate-100 pt-4">
                         {newsCount !== null && (
-                          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <p className="flex items-center gap-1.5 text-xs text-slate-500">
                             <Newspaper className="h-3.5 w-3.5" />
                             최근 뉴스 {newsCount}건 기반 추천
                           </p>
@@ -1251,15 +1302,15 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                               className={cn(
                                 "rounded-xl border p-4 text-left transition-all",
                                 selectedCandidate === c
-                                  ? "border-primary bg-primary/10"
-                                  : "border-border hover:border-primary/30 hover:bg-secondary/50"
+                                  ? "border-blue-600 bg-blue-50"
+                                  : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
                               )}
                             >
                               <div className="flex items-start justify-between gap-2">
-                                <h3 className="text-sm font-semibold text-foreground">{c.title}</h3>
+                                <h3 className="text-sm font-semibold text-slate-900">{c.title}</h3>
                                 <Badge variant="outline" className="shrink-0 text-[10px]">{categoryLabel[c.category] ?? c.category}</Badge>
                               </div>
-                              <p className="mt-1.5 text-xs text-muted-foreground">{c.description}</p>
+                              <p className="mt-1.5 text-xs text-slate-500">{c.description}</p>
                             </button>
                           ))}
                         </div>
@@ -1281,7 +1332,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
           {/* Step 4 (토론): Stance Selection */}
           {step === 4 && isGroup && (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">{selectedTopic?.title}</p>
+              <p className="text-sm text-slate-500">{selectedTopic?.title}</p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <button
                   onClick={() => setSelectedStance("PRO")}
@@ -1289,22 +1340,22 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                     "rounded-xl border p-5 text-left transition-all",
                     selectedStance === "PRO"
                       ? "border-blue-500 bg-blue-500/10"
-                      : "border-border hover:border-blue-500/30"
+                      : "border-slate-200 hover:border-blue-500/30"
                   )}
                 >
                   <div className="mb-3 flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/10">
                       <Target className="h-4 w-4 text-blue-500" />
                     </div>
-                    <h3 className="font-semibold text-foreground">찬성</h3>
+                    <h3 className="font-semibold text-slate-900">찬성</h3>
                   </div>
                   {/* 실전(real) 모드는 근거 숨김 — 데이터는 받되 화면에만 노출하지 않는다 */}
                   {selectedPracticeMode === "real" ? (
-                    <p className="text-xs text-muted-foreground/70">실전 모드에서는 근거가 제공되지 않습니다</p>
+                    <p className="text-xs text-slate-400">실전 모드에서는 근거가 제공되지 않습니다</p>
                   ) : (
                     <ul className="space-y-1">
                       {selectedTopic?.proKeyPoints.map((point, i) => (
-                        <li key={i} className="text-xs text-muted-foreground">- {point}</li>
+                        <li key={i} className="text-xs text-slate-500">- {point}</li>
                       ))}
                     </ul>
                   )}
@@ -1316,22 +1367,22 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                     "rounded-xl border p-5 text-left transition-all",
                     selectedStance === "CON"
                       ? "border-rose-500 bg-rose-500/10"
-                      : "border-border hover:border-rose-500/30"
+                      : "border-slate-200 hover:border-rose-500/30"
                   )}
                 >
                   <div className="mb-3 flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-500/10">
                       <Swords className="h-4 w-4 text-rose-500" />
                     </div>
-                    <h3 className="font-semibold text-foreground">반대</h3>
+                    <h3 className="font-semibold text-slate-900">반대</h3>
                   </div>
                   {/* 실전(real) 모드는 근거 숨김 — 데이터는 받되 화면에만 노출하지 않는다 */}
                   {selectedPracticeMode === "real" ? (
-                    <p className="text-xs text-muted-foreground/70">실전 모드에서는 근거가 제공되지 않습니다</p>
+                    <p className="text-xs text-slate-400">실전 모드에서는 근거가 제공되지 않습니다</p>
                   ) : (
                     <ul className="space-y-1">
                       {selectedTopic?.conKeyPoints.map((point, i) => (
-                        <li key={i} className="text-xs text-muted-foreground">- {point}</li>
+                        <li key={i} className="text-xs text-slate-500">- {point}</li>
                       ))}
                     </ul>
                   )}
@@ -1341,78 +1392,121 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
           )}
 
           {/* Step 5 (토론): Persona Selection */}
-          {step === 5 && isGroup && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">토론 상대를 선택해주세요</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {debatePersonas.map(persona => (
-                  <button
-                    key={persona.id}
-                    onClick={() => setSelectedDebatePersona(persona)}
-                    className={cn(
-                      "rounded-xl border p-4 text-left transition-all",
-                      selectedDebatePersona?.id === persona.id
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/30 hover:bg-secondary/50"
-                    )}
-                  >
-                    <div className="mb-2 flex items-center gap-2">
-                      <Users className="h-4 w-4 text-primary" />
-                      <h3 className="text-sm font-semibold text-foreground">{persona.name}</h3>
-                      <Badge variant="secondary" className="text-[10px]">{persona.difficulty}</Badge>
+          {step === 5 && isGroup && (() => {
+            const list = debatePersonas
+            const idx = Math.min(dpIdx, Math.max(list.length - 1, 0))
+            const p = list[idx]
+            const multi = list.length > 1
+            const selectAt = (i: number) => {
+              const n = list.length
+              if (!n) return
+              const j = ((i % n) + n) % n
+              setDpIdx(j)
+              setSelectedDebatePersona(list[j])
+            }
+            return (
+              <div className="space-y-5">
+                <p className="text-center text-[15px] font-semibold leading-relaxed text-slate-900">함께 토론할 상대를 선택해주세요</p>
+                {list.length === 0 || !p ? (
+                  <p className="py-8 text-center text-sm text-slate-400">토론 상대를 불러오는 중입니다</p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => selectAt(idx - 1)}
+                        className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700", !multi && "invisible")}
+                      >
+                        <ChevronLeft className="h-[18px] w-[18px]" />
+                      </button>
+                      <div className="flex flex-1 gap-4 rounded-2xl border-2 border-blue-600 bg-blue-50/40 p-4 shadow-sm">
+                        <div className="relative aspect-[3/4] w-40 shrink-0 overflow-hidden rounded-xl bg-slate-100">
+                          <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 9px, rgba(100,116,139,0.08) 9px 18px)" }} />
+                          <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
+                            <Users className="h-8 w-8" />
+                            <span className="text-[9px]">토론 상대 이미지</span>
+                          </div>
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/55 to-transparent p-2.5">
+                            <span className="block truncate text-sm font-bold text-white drop-shadow">{p.name}</span>
+                          </div>
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-[15px] font-bold text-slate-900">{p.name}</p>
+                              <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">{p.difficulty}</span>
+                            </div>
+                            <span className="flex shrink-0 items-center gap-1 rounded-full bg-blue-600 px-2 py-0.5 text-[11px] font-semibold text-white"><Check className="h-3 w-3" />선택됨</span>
+                          </div>
+                          <p className="mt-3 text-xs leading-relaxed text-slate-600">{p.background}</p>
+                          <p className="mt-2 text-xs text-slate-400">스타일: {p.debateStyle}</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => selectAt(idx + 1)}
+                        className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700", !multi && "invisible")}
+                      >
+                        <ChevronRight className="h-[18px] w-[18px]" />
+                      </button>
                     </div>
-                    <p className="mb-2 text-xs text-muted-foreground">{persona.background}</p>
-                    <p className="text-xs text-muted-foreground/70">스타일: {persona.debateStyle}</p>
-                  </button>
-                ))}
+                    {multi && (
+                      <div className="flex items-center justify-center gap-1.5">
+                        {list.map((_, i) => (
+                          <span key={i} className={cn("h-1.5 rounded-full transition-all", i === idx ? "w-4 bg-blue-600" : "w-1.5 bg-slate-300")} />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
-            </div>
-          )}
+            )
+          })()}
 
           {/* Step 6 (토론): Difficulty + Confirm */}
           {step === 6 && isGroup && (
             <div className="space-y-6">
               <div className="text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-600">
                   <CheckCircle className="h-8 w-8 text-white" />
                 </div>
-                <h3 className="text-lg font-semibold text-foreground">토론 준비 완료</h3>
-                <p className="mt-1 text-sm text-muted-foreground">난이도를 확인하고 토론을 시작하세요</p>
+                <h3 className="text-lg font-semibold text-slate-900">토론 준비 완료</h3>
+                <p className="mt-1 text-sm text-slate-500">난이도를 확인하고 토론을 시작하세요</p>
               </div>
 
-              <div className="space-y-3 rounded-xl border border-border bg-secondary/30 p-4">
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-sm text-muted-foreground">모드</span>
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500">모드</span>
                   <Badge variant="outline" className={cn(
                     selectedPracticeMode === "practice"
-                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                      : "bg-rose-500/20 text-rose-400 border-rose-500/30"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-rose-50 text-rose-700 border-rose-200"
                   )}>
                     {selectedPracticeMode === "practice" ? "연습 모드" : "실전 모드"}
                   </Badge>
                 </div>
                 {currentDebateIntro && (
-                  <div className="flex items-center justify-between py-2 border-b border-border/30">
-                    <span className="text-sm text-muted-foreground">참고 기업</span>
-                    <span className="text-sm font-medium text-foreground">{currentDebateIntro.companyName}</span>
+                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                    <span className="text-sm text-slate-500">참고 기업</span>
+                    <span className="text-sm font-medium text-slate-900">{currentDebateIntro.companyName}</span>
                   </div>
                 )}
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-sm text-muted-foreground">주제</span>
-                  <span className="text-sm font-medium text-foreground text-right">{selectedTopic?.title}</span>
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500">주제</span>
+                  <span className="text-sm font-medium text-slate-900 text-right">{selectedTopic?.title}</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-sm text-muted-foreground">입장</span>
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500">입장</span>
                   <Badge variant={selectedStance === "PRO" ? "default" : "secondary"}>
                     {selectedStance === "PRO" ? "찬성" : "반대"}
                   </Badge>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-sm text-muted-foreground">상대</span>
-                  <span className="text-sm font-medium text-foreground">{selectedDebatePersona?.name}</span>
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-500">상대</span>
+                  <span className="text-sm font-medium text-slate-900">{selectedDebatePersona?.name}</span>
                 </div>
                 <div className="flex items-center justify-between py-2">
-                  <span className="text-sm text-muted-foreground">난이도</span>
+                  <span className="text-sm text-slate-500">난이도</span>
                   <div className="grid grid-cols-3 gap-2">
                     {([["EASY", "쉬움"], ["NORMAL", "보통"], ["HARD", "어려움"]] as const).map(([val, label]) => (
                       <button
@@ -1422,8 +1516,8 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                         className={cn(
                           "h-8 rounded-lg border px-3 text-xs font-medium transition-all",
                           debateDifficulty === val
-                            ? "bg-primary/10 border-primary text-primary"
-                            : "border-border text-muted-foreground hover:border-primary/30"
+                            ? "bg-blue-50 border-blue-600 text-blue-700"
+                            : "border-slate-200 text-slate-500 hover:border-blue-300"
                         )}
                       >
                         {label}
@@ -1449,7 +1543,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                   if (selectedDebateIntro !== null) q.set("introId", String(selectedDebateIntro))
                   router.push(`/debate?${q.toString()}`)
                 }}
-                className="w-full gap-2 py-6 text-base font-semibold bg-foreground text-background shadow-lg hover:bg-foreground/90"
+                className="w-full gap-2 py-6 text-base font-semibold bg-blue-600 text-white shadow-sm hover:bg-blue-700"
               >
                 <Mic className="h-5 w-5" />
                 토론 시작하기
@@ -1460,7 +1554,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
 
         {/* Navigation Buttons */}
         {step <= totalSteps && (
-          <div className="flex justify-between gap-3 border-t border-border/30 pt-4">
+          <div className="flex justify-between gap-3 border-t border-slate-100 pt-4">
             <Button
               variant="ghost"
               onClick={handleBack}
@@ -1474,7 +1568,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
               <Button
                 onClick={handleNext}
                 disabled={!canProceed}
-                className="gap-1 bg-foreground text-background hover:bg-foreground/90"
+                className="gap-1 bg-blue-600 text-white hover:bg-blue-700"
               >
                 다음
                 <ArrowRight className="h-4 w-4" />
