@@ -929,7 +929,14 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
 
                     const { sessionId } = await startInterview(roomId)
                     handleClose()
-                    router.push(`/interview?mode=${selectedPracticeMode}&sessionId=${sessionId}`)
+                    const params = new URLSearchParams({
+                      mode: selectedPracticeMode,
+                      sessionId: String(sessionId),
+                      company: currentIntro.companyName,
+                      role: currentIntro.jobPosition,
+                    })
+                    if (currentStage?.title) params.set("stage", currentStage.title)
+                    router.push(`/interview?${params.toString()}`)
                   } catch {
                     setStarting(false)
                   }
