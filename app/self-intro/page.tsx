@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { TopNav } from "@/components/dashboard/top-nav"
 import { SelfIntroModal } from "@/components/dashboard/self-intro-modal"
+import { InterviewModal } from "@/components/dashboard/interview-modal"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { PenTool, Plus, Pencil, Play, FileText, Briefcase, Loader2, BarChart3 } from "lucide-react"
@@ -28,6 +29,8 @@ export default function SelfIntroPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [selfIntros, setSelfIntros] = useState<SelfIntroResponse[]>([])
   const [loading, setLoading] = useState(true)
+  const [isInterviewModalOpen, setIsInterviewModalOpen] = useState(false)
+  const [interviewIntroId, setInterviewIntroId] = useState<number | null>(null)
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null
@@ -156,7 +159,7 @@ export default function SelfIntroPage() {
                       수정
                     </button>
                     <button
-                      onClick={() => router.push(`/dashboard?startInterview=${intro.id}`)}
+                      onClick={() => { setInterviewIntroId(intro.id); setIsInterviewModalOpen(true) }}
                       className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-900 py-2 text-xs font-bold text-white transition-colors hover:bg-slate-700"
                     >
                       <Play className="h-3.5 w-3.5" fill="currentColor" strokeWidth={0} />
@@ -181,6 +184,17 @@ export default function SelfIntroPage() {
         )}
       </main>
 
+      <InterviewModal
+        open={isInterviewModalOpen}
+        onOpenChange={setIsInterviewModalOpen}
+        prefillData={interviewIntroId ? {
+          introId: interviewIntroId,
+          stage: "technical",
+          mode: "one-on-one",
+          practiceMode: "practice" as const,
+          personas: ["TEAM_LEAD"],
+        } : null}
+      />
       <SelfIntroModal
         open={isSheetOpen}
         onOpenChange={handleModalClose}
