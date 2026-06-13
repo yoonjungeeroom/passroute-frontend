@@ -19,6 +19,32 @@ export interface WeaknessItem {
   comment: string
 }
 
+// 다음 답변 교정용 상세 피드백. 신규 필드 — 구버전/생성중 리포트엔 없을 수 있다.
+// 백엔드 케이스 혼용(camel/snake) 대비해 API 레이어(getInterviewReport)에서 아래 정규화 형태로 변환된다.
+export interface DetailedFeedback {
+  strength: string | null
+  weakness: string | null
+  missingInfo: string[]
+  // ↓ 60점 미만 문항에서만 채워짐. 60점 이상이면 null.
+  improvementExample: string | null
+  suggestedAnswer: string | null
+  retryStrategy: string | null
+}
+
+export interface IncorrectClaim {
+  userClaim: string | null          // 내가 한 말(틀린 주장)
+  issue: string | null              // 무엇이 틀렸나
+  correctExplanation: string | null // 올바른 개념
+  suggestedFix: string | null       // 이렇게 고쳐 말하기
+}
+
+// 기술 사실 검증. isFactCheckApplicable=false(인성 문항 등)거나 내용 없으면 블록 숨김.
+export interface FactCheck {
+  isFactCheckApplicable: boolean
+  incorrectClaims: IncorrectClaim[]
+  unsupportedClaims: string[]
+}
+
 export interface QuestionFeedback {
   question_index: number
   question: string
@@ -30,6 +56,9 @@ export interface QuestionFeedback {
   // 꼬리질문 여부. 백엔드가 questionFeedback를 실제 진행 순서로 내려주며, true면 직전 메인 질문의 하위(Q1-1)로 표기.
   // 구버전 리포트엔 없을 수 있어 optional.
   follow_up?: boolean
+  // 신규: API 레이어에서 정규화된 상세 피드백/사실 검증. null/누락 가능.
+  detailedFeedback?: DetailedFeedback | null
+  factCheck?: FactCheck | null
 }
 
 export interface InterviewReportResponse {

@@ -1,5 +1,55 @@
 import { apiFetch, getAuthHeaders } from "./client"
-import type { InterviewReportResponse, DebateReportResponse, SelfIntroReportResponse, CsTopicAnalysisResponse } from "@/types/report"
+import type {
+  InterviewReportResponse, DebateReportResponse, SelfIntroReportResponse, CsTopicAnalysisResponse,
+  DetailedFeedback, FactCheck, IncorrectClaim,
+} from "@/types/report"
+
+// ── questionFeedback 신규 필드(detailedFeedback/factCheck) 정규화 ──
+// 백엔드가 중첩 객체를 snake_case로 내려보내는 불일치가 있어(turnFeedback 선례 참고),
+// camel/snake 양쪽 키를 모두 수용해 camelCase 정본으로 변환한다. 빈 문자열은 null로 취급.
+function asString(v: unknown): string | null {
+  return typeof v === "string" && v.trim() !== "" ? v : null
+}
+function asStringArray(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : []
+}
+
+function normalizeDetailedFeedback(raw: unknown): DetailedFeedback | null {
+  if (!raw || typeof raw !== "object") return null
+  const o = raw as Record<string, unknown>
+  return {
+    strength: asString(o.strength),
+    weakness: asString(o.weakness),
+    missingInfo: asStringArray(o.missingInfo ?? o.missing_info),
+    improvementExample: asString(o.improvementExample ?? o.improvement_example),
+    suggestedAnswer: asString(o.suggestedAnswer ?? o.suggested_answer),
+    retryStrategy: asString(o.retryStrategy ?? o.retry_strategy),
+  }
+}
+
+function normalizeFactCheck(raw: unknown): FactCheck | null {
+  if (!raw || typeof raw !== "object") return null
+  const o = raw as Record<string, unknown>
+  const rawIncorrect = o.incorrectClaims ?? o.incorrect_claims
+  const incorrectClaims: IncorrectClaim[] = Array.isArray(rawIncorrect)
+    ? rawIncorrect
+        .map((c) => {
+          const ci = (c && typeof c === "object" ? c : {}) as Record<string, unknown>
+          return {
+            userClaim: asString(ci.userClaim ?? ci.user_claim),
+            issue: asString(ci.issue),
+            correctExplanation: asString(ci.correctExplanation ?? ci.correct_explanation),
+            suggestedFix: asString(ci.suggestedFix ?? ci.suggested_fix),
+          }
+        })
+        .filter((c) => c.userClaim || c.issue || c.correctExplanation || c.suggestedFix)
+    : []
+  return {
+    isFactCheckApplicable: (o.isFactCheckApplicable ?? o.is_fact_check_applicable) === true,
+    incorrectClaims,
+    unsupportedClaims: asStringArray(o.unsupportedClaims ?? o.unsupported_claims),
+  }
+}
 
 export interface ReportListItem {
   reportType: string
@@ -93,7 +143,20 @@ export async function getInterviewReport(sessionId: number): Promise<InterviewRe
   }
 
   const result = await response.json()
-  return result.data
+  const data = result.data
+  if (!data) return null
+
+  // 문항별 신규 필드(detailedFeedback/factCheck)를 camel/snake 무관하게 정규화. 나머지 필드는 그대로.
+  return {
+    ...data,
+    questionFeedback: Array.isArray(data.questionFeedback)
+      ? data.questionFeedback.map((q: Record<string, unknown>) => ({
+          ...q,
+          detailedFeedback: normalizeDetailedFeedback(q.detailedFeedback ?? q.detailed_feedback),
+          factCheck: normalizeFactCheck(q.factCheck ?? q.fact_check),
+        }))
+      : data.questionFeedback,
+  }
 }
 
 export async function getDebateReport(sessionId: number): Promise<DebateReportResponse | null> {
