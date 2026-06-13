@@ -18,8 +18,8 @@ function formatDate(dateStr: string): string {
 
 const careerLevelLabels: Record<string, string> = {
   INTERN: "인턴",
-  JUNIOR: "주니어",
-  SENIOR: "시니어",
+  JUNIOR: "신입",
+  SENIOR: "경력",
 }
 
 export default function SelfIntroPage() {

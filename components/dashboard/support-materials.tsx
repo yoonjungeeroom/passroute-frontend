@@ -8,8 +8,8 @@ import { getSelfIntroList, type SelfIntroResponse } from "@/lib/api/self-intro"
 
 const careerLevelLabels: Record<string, string> = {
   INTERN: "인턴",
-  JUNIOR: "주니어",
-  SENIOR: "시니어",
+  JUNIOR: "신입",
+  SENIOR: "경력",
 }
 
 function formatDate(dateStr: string): string {
