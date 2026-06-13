@@ -95,12 +95,14 @@ export default function ReportsPage() {
     }
   }, [])
 
-  // 전체 리포트 한 번만 fetch (stats 계산용)
+  // 전체 리포트 fetch (stats 계산용) — 실패 시 reports로 폴백
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null
     if (!token) { setStatsLoading(false); return }
-    getReportList({ type: "all", page: 0, size: 1000 })
-      .then((res) => setAllReports(res.items))
+    getReportList({ type: "all", page: 0, size: 200 })
+      .then((res) => {
+        if (res.items.length > 0) setAllReports(res.items)
+      })
       .catch(() => {})
       .finally(() => setStatsLoading(false))
   }, [])
@@ -217,39 +219,28 @@ export default function ReportsPage() {
           <p className="mt-1 text-sm text-slate-500">AI가 분석한 면접 성과와 개선점을 확인하세요</p>
         </div>
 
-        {/* Quick Stats — allReports 기반 (전체, 필터 무관) */}
+        {/* Quick Stats — allReports 기반, 없으면 reports 폴백 */}
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            {
-              label: "총 면접",
-              value: statsLoading ? "—" : allReports.length,
-            },
-            {
-              label: "평균 점수",
-              value: statsLoading
-                ? "—"
-                : allReports.filter((r) => r.totalScore > 0).length > 0
-                ? (
-                    allReports
-                      .filter((r) => r.totalScore > 0)
-                      .reduce((s, r) => s + r.totalScore, 0) /
-                    allReports.filter((r) => r.totalScore > 0).length
-                  ).toFixed(1)
-                : "--",
-            },
-            {
-              label: "최고 점수",
-              value: statsLoading
-                ? "—"
-                : allReports.filter((r) => r.totalScore > 0).length > 0
-                ? Math.max(...allReports.map((r) => r.totalScore)).toFixed(1)
-                : "--",
-            },
-            {
-              label: "분석 완료",
-              value: statsLoading ? "—" : allReports.filter((r) => r.totalScore > 0).length,
-            },
-          ].map((stat) => (
+          {(()=> {
+            const src = allReports.length > 0 ? allReports : reports
+            const scored = src.filter((r) => r.totalScore > 0)
+            return [
+              { label: "총 면접", value: statsLoading ? "—" : src.length },
+              {
+                label: "평균 점수",
+                value: statsLoading ? "—" : scored.length > 0
+                  ? (scored.reduce((s, r) => s + r.totalScore, 0) / scored.length).toFixed(1)
+                  : "--",
+              },
+              {
+                label: "최고 점수",
+                value: statsLoading ? "—" : scored.length > 0
+                  ? Math.max(...scored.map((r) => r.totalScore)).toFixed(1)
+                  : "--",
+              },
+              { label: "분석 완료", value: statsLoading ? "—" : scored.length },
+            ]
+          })().map((stat) => (
             <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="text-2xl font-extrabold text-slate-900">{stat.value}</div>
               <div className="mt-1 text-xs text-slate-400">{stat.label}</div>
