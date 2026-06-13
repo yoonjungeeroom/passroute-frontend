@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, ChevronRight, Pencil, Play, FileText, Briefcase, Loader2 } from "lucide-react"
+import { Plus, ChevronRight, Pencil, Play, FileText, Briefcase, Loader2, BarChart3 } from "lucide-react"
 import { SelfIntroModal } from "./self-intro-modal"
 import { getSelfIntroList, type SelfIntroResponse } from "@/lib/api/self-intro"
 
@@ -89,13 +89,18 @@ export function SupportMaterials({ onStartInterview }: SupportMaterialsProps) {
                   <span className="text-[11px] text-slate-300">·</span>
                   <span className="text-[11px] text-slate-400">{formatDate(intro.updatedAt)} 업데이트</span>
                 </div>
-                <div className="mt-auto flex gap-2">
-                  <button onClick={() => handleEdit(String(intro.id))} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-                    <Pencil size={13} /> 수정
+                <div className="mt-auto space-y-2">
+                  <button onClick={() => router.push(`/reports/self-intro/${intro.id}`)} className="flex w-full items-center justify-center gap-1 rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                    <BarChart3 size={13} /> 리포트 보기
                   </button>
-                  <button onClick={() => onStartInterview?.(intro.id)} className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-slate-900 py-2 text-xs font-bold text-white hover:bg-slate-800">
-                    <Play size={12} fill="currentColor" strokeWidth={0} /> 면접 시작
-                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEdit(String(intro.id))} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                      <Pencil size={13} /> 수정
+                    </button>
+                    <button onClick={() => onStartInterview?.(intro.id)} className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-slate-900 py-2 text-xs font-bold text-white hover:bg-slate-800">
+                      <Play size={12} fill="currentColor" strokeWidth={0} /> 면접 시작
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
