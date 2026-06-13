@@ -10,7 +10,6 @@ import { SupportMaterials } from "@/components/dashboard/support-materials"
 import { DocumentAssets } from "@/components/dashboard/document-assets"
 import { WhyPassroute } from "@/components/dashboard/why-passroute"
 import { ModeGuide } from "@/components/dashboard/mode-guide"
-import { InterviewHistory } from "@/components/dashboard/interview-history"
 import { InterviewModal } from "@/components/dashboard/interview-modal"
 import { getUserProfile } from "@/lib/api/user"
 
@@ -75,7 +74,6 @@ function DashboardContent() {
         <DocumentAssets />
         <WhyPassroute />
         <ModeGuide />
-        <InterviewHistory />
       </main>
 
       <InterviewModal
