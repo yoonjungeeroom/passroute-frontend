@@ -2,14 +2,19 @@
 
 import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
-import { Sidebar } from "@/components/dashboard/sidebar"
-import { MobileHeader } from "@/components/dashboard/mobile-header"
+import { TopNav } from "@/components/dashboard/top-nav"
+import { HeroSection } from "@/components/dashboard/hero-section"
+import { InterviewStats } from "@/components/dashboard/interview-stats"
 import { UpcomingSchedule } from "@/components/dashboard/upcoming-schedule"
 import { SupportMaterials } from "@/components/dashboard/support-materials"
 import { DocumentAssets } from "@/components/dashboard/document-assets"
+import { WhyPassroute } from "@/components/dashboard/why-passroute"
+import { ModeGuide } from "@/components/dashboard/mode-guide"
 import { InterviewHistory } from "@/components/dashboard/interview-history"
 import { InterviewModal } from "@/components/dashboard/interview-modal"
-import { HeroSection } from "@/components/dashboard/hero-section"
+
+// TODO: 실제 로그인 사용자 이름으로 교체하세요 (예: useAuth()).
+const USER_NAME = "방윤지"
 
 function DashboardContent() {
   const searchParams = useSearchParams()
@@ -32,36 +37,31 @@ function DashboardContent() {
   } : null)
 
   useEffect(() => {
-    if (startInterviewId) {
-      setIsModalOpen(true)
-    }
+    if (startInterviewId) setIsModalOpen(true)
   }, [startInterviewId])
 
   const handleStartInterview = () => {
     setSelectedIntroId(null)
     setIsModalOpen(true)
   }
-
   const handleStartInterviewWithIntro = (introId: number) => {
     setSelectedIntroId(introId)
     setIsModalOpen(true)
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Sidebar />
-      <MobileHeader />
+    <div className="min-h-screen w-full bg-slate-50 text-slate-900">
+      <TopNav userName={USER_NAME} />
 
-      <main className="pt-14 lg:pl-64 lg:pt-0">
-        <div className="px-4 py-6 sm:px-6 lg:px-8">
-          <div className="animate-stagger space-y-6 pb-24">
-            <HeroSection onStartInterview={handleStartInterview} />
-            <UpcomingSchedule onStartInterview={handleStartInterview} />
-            <SupportMaterials onStartInterview={handleStartInterviewWithIntro} />
-            <DocumentAssets />
-            <InterviewHistory />
-          </div>
-        </div>
+      <main className="mx-auto w-full max-w-[1040px] space-y-11 px-6 py-9">
+        <HeroSection userName={USER_NAME} onStartInterview={handleStartInterview} />
+        <InterviewStats />
+        <UpcomingSchedule onStartInterview={handleStartInterview} />
+        <SupportMaterials onStartInterview={handleStartInterviewWithIntro} />
+        <DocumentAssets />
+        <WhyPassroute />
+        <ModeGuide />
+        <InterviewHistory />
       </main>
 
       <InterviewModal
