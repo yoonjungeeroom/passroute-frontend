@@ -48,6 +48,7 @@ import {
   type DebateRound,
   type DebateBranchChoice,
   type SpeakerType,
+  type PersonaVideo,
 } from "@/lib/api/debate"
 import { ApiError } from "@/lib/api/client"
 import { useDebateSTT } from "@/hooks/use-debate-stt"
@@ -87,6 +88,40 @@ function AnalysisPanel({ title, children }: { title: string; children: React.Rea
       </div>
       <div className="flex-1 p-4">{children}</div>
     </div>
+  )
+}
+
+function PersonaVideoPlayer({
+  video,
+  speaking,
+}: {
+  video?: PersonaVideo | null
+  speaking: boolean
+}) {
+  const src = speaking ? video?.speakingVideoUrl : video?.silenceVideoUrl
+
+  if (!src) {
+    return (
+      <>
+        <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
+        <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
+          <Video className="h-6 w-6 opacity-70" />
+          <span className="font-mono text-[10px]">아바타 영상 준비 중</span>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <video
+      key={src}
+      src={src}
+      autoPlay
+      loop
+      muted
+      playsInline
+      className="h-full w-full object-cover"
+    />
   )
 }
 
@@ -131,6 +166,10 @@ function DebatePageInner() {
   // Debate state
   const [sessionId, setSessionId] = useState<number | null>(null)
   const [debateState, setDebateState] = useState<DebateStateResponse | null>(null)
+  const [sessionVideos, setSessionVideos] = useState<{
+    moderator?: PersonaVideo | null
+    opponent?: PersonaVideo | null
+  }>({})
   const [submitting, setSubmitting] = useState(false)
   // 분기 선택(반박 한 번 더 / 마무리) 전송 중인 선택지. 어느 버튼에 스피너를 띄울지 구분용.
   const [branchPending, setBranchPending] = useState<DebateBranchChoice | null>(null)
@@ -162,6 +201,7 @@ function DebatePageInner() {
   const userMsgSeqRef = useRef(0) // 내 발언 버블의 안정 key 생성용
   // 현재 공개 중인 턴의 화자 — 상대 카드 "발언 중" 표시를 화자에 맞게 켜기 위함(면접관 cue 땐 끔).
   const [revealingSpeaker, setRevealingSpeaker] = useState<SpeakerType | null>(null)
+  const [audioPlayingSpeaker, setAudioPlayingSpeaker] = useState<SpeakerType | null>(null)
   // 상대 발언 버블을 TTS 재생 진행률에 맞춰 문장 단위로 점진 노출하기 위한 상태.
   // null이면 모든 버블이 chatTurns의 전체 content를 그대로 보여준다(면접관 멘트는 항상 이 경로).
   const [streamingReveal, setStreamingReveal] = useState<StreamingReveal | null>(null)
@@ -208,6 +248,8 @@ function DebatePageInner() {
   const competitorSpeaking =
     revealingSpeaker === "AI_COMPETITOR" ||
     (polling && !debateState?.waitingForUser && !revealing)
+  const moderatorVideo = debateState?.moderator ?? sessionVideos.moderator
+  const opponentVideo = debateState?.opponent ?? sessionVideos.opponent ?? selectedPersona
   // 내 발언 미확정 버블 표시 — 말하는 중(라이브)이거나, 녹음 완료 후(sttReady) 제출 전까지 그대로 유지.
   // sttReady를 양 모드 공통으로 두어, 실전모드도 "녹음 완료"가 아니라 "제출" 시점에 사라진다(제출 시 setSttReady(false)).
   const showPendingBubble = recording || sttReady || (isPractice && (awaitingEval || !!feedbackTurn))
@@ -328,6 +370,7 @@ function DebatePageInner() {
     setRevealedTurnIds(new Set())
     setRevealing(false)
     setRevealingSpeaker(null)
+    setAudioPlayingSpeaker(null)
     setStreamingReveal(null)
     setChatTurns([])
     userMsgSeqRef.current = 0
@@ -342,6 +385,8 @@ function DebatePageInner() {
         audioRef.current.onended = null
         audioRef.current.onerror = null
         audioRef.current.ontimeupdate = null
+        audioRef.current.onplaying = null
+        audioRef.current.onpause = null
         audioRef.current.pause()
       }
       setStreamingReveal(null)
@@ -365,6 +410,8 @@ function DebatePageInner() {
       audioRef.current.onended = null
       audioRef.current.onerror = null
       audioRef.current.ontimeupdate = null
+      audioRef.current.onplaying = null
+      audioRef.current.onpause = null
     }
 
     const turn = revealQueueRef.current.shift()
@@ -372,6 +419,7 @@ function DebatePageInner() {
       isRevealingRef.current = false
       setRevealing(false)
       setRevealingSpeaker(null)
+      setAudioPlayingSpeaker(null)
       setStreamingReveal(null)
       return
     }
@@ -397,9 +445,23 @@ function DebatePageInner() {
       // handleCreateSession에서 활성화해 둔 단일 오디오 요소를 재사용 (자동재생 차단 방지)
       const audio = audioRef.current ?? (audioRef.current = new Audio())
       const finishStreaming = () => setStreamingReveal(prev => (prev?.key === streamKey ? null : prev))
-      audio.onended = () => { finishStreaming(); revealNext() }
+      audio.pause()
+      setAudioPlayingSpeaker(null)
+      audio.src = turn.audioUrl
+      audio.currentTime = 0
+      audio.onplaying = () => setAudioPlayingSpeaker(turn.speakerType)
+      audio.onpause = () => setAudioPlayingSpeaker(null)
+      audio.onended = () => {
+        setAudioPlayingSpeaker(null)
+        finishStreaming()
+        revealNext()
+      }
       // 재생 중 디코드/로드 오류로 ended가 안 와도 막히지 않도록 (입력창이 큐에 묶여 있으므로 중요)
-      audio.onerror = () => { finishStreaming(); advanceTimerRef.current = setTimeout(revealNext, 600) }
+      audio.onerror = () => {
+        setAudioPlayingSpeaker(null)
+        finishStreaming()
+        advanceTimerRef.current = setTimeout(revealNext, 600)
+      }
       // 재생 진행률에 맞춰 노출할 문장 수를 늘려간다 — 음성이 빨리 끝나면 텍스트도 따라잡고, onended에서 전체 노출로 마무리.
       audio.ontimeupdate = () => {
         if (!streaming || !isFinite(audio.duration) || audio.duration <= 0) return
@@ -407,12 +469,10 @@ function DebatePageInner() {
         const target = Math.min(sentences.length, Math.max(1, Math.ceil(ratio * sentences.length)))
         setStreamingReveal(prev => (prev && prev.key === streamKey && target > prev.visibleCount ? { ...prev, visibleCount: target } : prev))
       }
-      audio.pause()
-      audio.src = turn.audioUrl
-      audio.currentTime = 0
       audio.play().catch((e) => {
         console.warn("[debate] TTS 자동재생 실패:", e)
         // 재생 실패해도 다음 턴으로 진행 (한 턴 실패가 이후 공개를 막지 않도록)
+        setAudioPlayingSpeaker(null)
         finishStreaming()
         advanceTimerRef.current = setTimeout(revealNext, 600)
       })
@@ -431,8 +491,11 @@ function DebatePageInner() {
       audioRef.current.onended = null
       audioRef.current.onerror = null
       audioRef.current.ontimeupdate = null
+      audioRef.current.onplaying = null
+      audioRef.current.onpause = null
       audioRef.current.pause()
     }
+    setAudioPlayingSpeaker(null)
     setStreamingReveal(null)
     revealNext()
   }, [revealNext])
@@ -487,6 +550,7 @@ function DebatePageInner() {
         ...(isNaN(introId) ? {} : { introId }),
       })
       setSessionId(res.sessionId)
+      setSessionVideos({ moderator: res.moderator, opponent: res.opponent })
       if (isExam) {
         // 실전: 준비시간 카운트다운 후 토론 시작 (start는 prep 종료 시 호출)
         const secs = res.prepSeconds ?? 60
@@ -891,17 +955,16 @@ function DebatePageInner() {
         <main className="flex min-h-0 flex-1 gap-3 p-3">
           {/* Left: 참가자 스트립 (사회자 / 상대 / 나) */}
           <div className="flex w-60 shrink-0 flex-col gap-3">
-            {/* 사회자 — 아바타 영상 자리 */}
+            {/* 사회자 */}
             <div className={cn(
               "relative overflow-hidden rounded-lg border shadow-sm transition-all",
               isPractice ? "flex-1 bg-white" : "aspect-[4/3] w-full shrink-0 bg-slate-100",
               revealingSpeaker === "AI_INTERVIEWER" ? "border-blue-500 ring-2 ring-blue-500/20" : (isPractice ? "border-slate-200" : "border-slate-300")
             )}>
-              <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
-              <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
-                <Video className="h-6 w-6 opacity-70" />
-                <span className="font-mono text-[10px]">아바타 영상 자리</span>
-              </div>
+              <PersonaVideoPlayer
+                video={moderatorVideo}
+                speaking={audioPlayingSpeaker === "AI_INTERVIEWER"}
+              />
               {revealingSpeaker === "AI_INTERVIEWER" && (
                 <div className="absolute left-0 right-0 top-3 flex items-end justify-center gap-[3px]">
                   {Array.from({ length: 10 }).map((_, i) => (
@@ -914,17 +977,16 @@ function DebatePageInner() {
               </div>
             </div>
 
-            {/* 상대 토론자 — 아바타 영상 자리 */}
+            {/* 상대 토론자 */}
             <div className={cn(
               "relative overflow-hidden rounded-lg border shadow-sm transition-all",
               isPractice ? "flex-1 bg-white" : "aspect-[4/3] w-full shrink-0 bg-slate-100",
               competitorSpeaking ? "border-blue-500 ring-2 ring-blue-500/20" : (isPractice ? "border-slate-200" : "border-slate-300")
             )}>
-              <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
-              <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
-                <Video className="h-6 w-6 opacity-70" />
-                <span className="font-mono text-[10px]">아바타 영상 자리</span>
-              </div>
+              <PersonaVideoPlayer
+                video={opponentVideo}
+                speaking={audioPlayingSpeaker === "AI_COMPETITOR"}
+              />
               {competitorSpeaking && (
                 <div className="absolute left-0 right-0 top-3 flex items-end justify-center gap-[3px]">
                   {Array.from({ length: 10 }).map((_, i) => (

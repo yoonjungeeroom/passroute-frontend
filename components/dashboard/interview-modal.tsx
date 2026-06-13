@@ -989,15 +989,18 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                       followupCount: settings.followUp,
                     })
 
-                    const { sessionId } = await startInterview(roomId)
+                    const { sessionId, interviewer } = await startInterview(roomId)
                     handleClose()
                     const params = new URLSearchParams({
                       mode: selectedPracticeMode,
                       sessionId: String(sessionId),
                       company: currentIntro.companyName,
                       role: currentIntro.jobPosition,
+                      aiInterviewer: selectedPersonas[0] || "TEAM_LEAD",
                     })
                     if (currentStage?.title) params.set("stage", currentStage.title)
+                    if (interviewer?.speakingVideoUrl) params.set("speakingVideoUrl", interviewer.speakingVideoUrl)
+                    if (interviewer?.silenceVideoUrl) params.set("silenceVideoUrl", interviewer.silenceVideoUrl)
                     router.push(`/interview?${params.toString()}`)
                   } catch {
                     setStarting(false)

@@ -17,7 +17,6 @@ import {
   AlertCircle,
   Clock,
   Headphones,
-  Video,
 } from "lucide-react"
 
 // Types
@@ -38,6 +37,15 @@ import { useSTT } from "@/hooks/use-stt"
 import { useFaceAnalysis } from "@/hooks/use-face-analysis"
 import { useClipRecorder } from "@/hooks/use-clip-recorder"
 import { PreCheckScreen } from "@/components/pre-check-screen"
+
+const S3_BASE = "https://passroute-files.s3.ap-northeast-2.amazonaws.com/avatars/interviewer"
+
+const AVATAR_VIDEOS: Record<string, { speaking: string; idle: string }> = {
+  HR_MANAGER:      { speaking: `${S3_BASE}/면접관_hr_speaking.mp4`,   idle: `${S3_BASE}/면접관_hr_idle.mp4`   },
+  TEAM_LEAD:       { speaking: `${S3_BASE}/면접관_실무_speaking.mp4`, idle: `${S3_BASE}/면접관_실무_idle.mp4` },
+  EXECUTIVE:       { speaking: `${S3_BASE}/면접관_임원_speaking.mp4`, idle: `${S3_BASE}/면접관_임원_idle.mp4` },
+  TECH_INTERVIEWER:{ speaking: `${S3_BASE}/면접관_기술_speaking.mp4`, idle: `${S3_BASE}/면접관_기술_idle.mp4` },
+}
 
 // Countdown Component
 function CountdownScreen({ onComplete }: { onComplete: () => void }) {
@@ -96,6 +104,9 @@ function LiveInterviewScreen({
   company,
   role,
   stage,
+  aiInterviewer,
+  interviewerVideo,
+  isQuestionAudioPlaying,
   onEnd,
   onExitEarly,
   stream,
@@ -107,6 +118,9 @@ function LiveInterviewScreen({
   company?: string
   role?: string
   stage?: string
+  aiInterviewer?: string
+  interviewerVideo?: { speakingVideoUrl?: string | null; silenceVideoUrl?: string | null }
+  isQuestionAudioPlaying: boolean
   onEnd: () => void
   onExitEarly: () => void
   stream: MediaStream | null
@@ -378,110 +392,107 @@ function LiveInterviewScreen({
         </div>
       </div>
 
-      {/* Main: AI 면접관 + 내 카메라를 4:3 고정 비율로 좌우 나란히 + 분석 패널 */}
+      {/* Main Grid */}
       <main className="flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
-        {/* Stage — 두 카메라를 4:3 고정 비율로 중앙에 나란히 (높이는 남는 공간에 맞춰 줄어듦) */}
-        <div className="flex min-w-0 flex-1 items-center justify-center overflow-hidden">
-          <div className="flex h-full min-h-0 items-center justify-center gap-4">
-            {/* AI 면접관 — 아바타 영상 자리 (4:3) */}
-            <div className="relative aspect-[4/3] h-[min(52vh,440px,calc(100vh-300px))] shrink-0 overflow-hidden rounded-2xl border border-slate-300 bg-slate-100 shadow-sm">
-              <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
-              <div className="relative flex h-full flex-col items-center justify-center gap-2 text-slate-400">
-                <Video className="h-7 w-7 opacity-70" />
-                <span className="font-mono text-[11px]">아바타 영상 자리</span>
-              </div>
-              {answerState === "waiting" && (
-                <div className="absolute left-0 right-0 top-5 flex items-end justify-center gap-[3px]">
-                  {Array.from({ length: 12 }).map((_, i) => (
-                    <span key={i} className="w-[3px] rounded-full bg-blue-600" style={{ height: 18, animation: "waveBar 0.9s ease-in-out infinite", animationDelay: `${i * 70}ms` }} />
-                  ))}
-                </div>
-              )}
-              <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-lg bg-white/85 px-2.5 py-1 text-[12px] font-semibold text-slate-700 shadow-sm backdrop-blur-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />AI 면접관
-              </div>
-            </div>
-
-            {/* 내 카메라 (4:3) */}
-            <div className="relative aspect-[4/3] h-[min(52vh,440px,calc(100vh-300px))] shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-sm">
-              {stream ? (
-                <video ref={userVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full items-center justify-center"><User className="h-20 w-20 text-slate-300" /></div>
-              )}
-
-          {/* REC */}
-          {answerState === "answering" && (
-            <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-slate-900/55 px-3 py-1 backdrop-blur-sm">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
-              <span className="text-xs font-bold tracking-wider text-white">REC</span>
-            </div>
-          )}
-
-          {/* self tag */}
-              <div className="absolute bottom-3 left-3 rounded-lg bg-slate-900/55 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">나 · 응시자</div>
-
-          {/* feedback toast (practice) */}
-          {mode === "practice" && (sttFeedback || faceFeedback) && (
-            <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2 animate-in fade-in slide-in-from-top-2 duration-300">
-              <div className="flex items-center gap-2 rounded-full bg-amber-500 px-4 py-2 shadow-lg">
-                <AlertCircle className="h-4 w-4 shrink-0 text-white" />
-                <span className="text-xs font-semibold text-white">{sttFeedback || faceFeedback}</span>
-              </div>
-            </div>
-          )}
-
-          {/* mic level (answering) */}
-          {answerState === "answering" && (
-            <div className="absolute bottom-12 left-1/2 w-48 max-w-[70%] -translate-x-1/2">
-              <div className="flex items-center gap-2 rounded-lg bg-white/85 px-3 py-2 shadow-lg backdrop-blur-sm">
-                <Mic className="h-4 w-4 text-blue-600" />
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
-                  <div className="h-full rounded-full bg-blue-600 transition-all duration-100" style={{ width: `${audioLevel}%` }} />
-                </div>
-              </div>
-            </div>
-          )}
-            </div>
-          </div>
-        </div>
-
-        {/* Side analysis (practice only) */}
+        {/* Left Column: 통합 분석 패널 — 실전 모드는 종료 후 리포트에서만 확인 */}
         {mode === "practice" && (
-          <div className="hidden w-72 shrink-0 flex-col gap-3 xl:flex">
+          <div className="hidden w-56 shrink-0 flex-col gap-3 xl:flex">
             <AnalysisPanel title="실시간 분석">
-              <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">음성</p>
-              <div className="mb-4 grid grid-cols-3 gap-2">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
-                  <div className="font-mono text-lg font-bold text-slate-900">{wpm > 0 ? Math.round(wpm) : "--"}</div>
-                  <div className="text-[10px] text-slate-500">WPM</div>
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">음성</div>
+              <div className="mb-3 grid grid-cols-3 gap-1.5">
+                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                  <div className="text-sm font-bold text-foreground">{wpm > 0 ? Math.round(wpm) : "--"}</div>
+                  <div className="text-[9px] text-muted-foreground">WPM</div>
                 </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
-                  <div className="font-mono text-lg font-bold text-slate-900">{silenceSec > 0 ? silenceSec.toFixed(1) : "--"}</div>
-                  <div className="text-[10px] text-slate-500">침묵(초)</div>
+                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                  <div className="text-sm font-bold text-foreground">{silenceSec > 0 ? silenceSec.toFixed(1) : "--"}</div>
+                  <div className="text-[9px] text-muted-foreground">침묵(초)</div>
                 </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
-                  <div className="font-mono text-lg font-bold text-slate-900">{totalFillerCount > 0 ? totalFillerCount : "--"}</div>
-                  <div className="text-[10px] text-slate-500">필러워드</div>
-                </div>
-              </div>
-              <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">영상</p>
-              <div className="mb-3">
-                <div className="mb-1.5 flex items-center justify-between text-xs">
-                  <span className="text-slate-500">시선 고정률</span>
-                  <span className="font-bold text-slate-900">{Math.round(gazeRatio)}%</span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
-                  <div className="h-full rounded-full bg-blue-600 transition-all duration-500" style={{ width: `${gazeRatio}%` }} />
+                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                  <div className="text-sm font-bold text-foreground">{totalFillerCount > 0 ? totalFillerCount : "--"}</div>
+                  <div className="text-[9px] text-muted-foreground">필러워드</div>
                 </div>
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <span className="text-xs text-slate-500">시선 이탈</span>
-                <span className="font-mono text-lg font-bold text-slate-900">{gazeOffCount}</span>
+
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">영상</div>
+              <div className="space-y-2">
+                <div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">시선 고정률</span>
+                    <span className="text-xs font-semibold text-foreground">{Math.round(gazeRatio)}%</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${gazeRatio}%` }} />
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border bg-background p-1.5 text-center">
+                  <div className="text-sm font-bold text-foreground">{gazeOffCount}</div>
+                  <div className="text-[9px] text-muted-foreground">시선이탈</div>
+                </div>
               </div>
             </AnalysisPanel>
           </div>
         )}
+
+        {/* Center Column: Video */}
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <div className="relative flex-1 overflow-hidden rounded-xl border border-border bg-white">
+            <div className="grid h-full grid-cols-1 gap-3 p-3 lg:grid-cols-2">
+              <div className="relative flex items-center justify-center overflow-hidden rounded-lg bg-black">
+                {(() => {
+                  const fallbackVideos = AVATAR_VIDEOS[aiInterviewer ?? "TEAM_LEAD"] ?? AVATAR_VIDEOS.TEAM_LEAD
+                  const speakingVideoUrl = interviewerVideo?.speakingVideoUrl || fallbackVideos.speaking
+                  const silenceVideoUrl = interviewerVideo?.silenceVideoUrl || fallbackVideos.idle
+                  const videoUrl = isQuestionAudioPlaying ? speakingVideoUrl : silenceVideoUrl
+
+                  return (
+                    <video
+                      key={videoUrl}
+                      src={videoUrl}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="h-full w-full object-cover"
+                    />
+                  )
+                })()}
+                <div className="absolute bottom-3 left-3 rounded-full bg-black/50 px-2.5 py-1 backdrop-blur-sm">
+                  <span className="text-xs font-medium text-white">AI 면접관</span>
+                </div>
+              </div>
+              <div className="relative flex items-center justify-center overflow-hidden rounded-lg bg-background">
+                {stream ? (
+                  <video ref={userVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+                ) : (
+                  <User className="h-16 w-16 text-muted-foreground/20" />
+                )}
+                <div className="absolute left-3 top-3 flex items-center gap-2 rounded-full bg-white/90 px-2.5 py-1 shadow-sm backdrop-blur-sm">
+                  <div className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+                  <span className="text-xs font-medium text-foreground">REC</span>
+                </div>
+                {mode === "practice" && (sttFeedback || faceFeedback) && (
+                  <div className="absolute left-3 right-3 top-12 z-10 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-center gap-2 rounded-lg bg-amber-500/90 px-3 py-2 shadow backdrop-blur-sm">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-white" />
+                      <span className="text-xs font-medium text-white">{sttFeedback || faceFeedback}</span>
+                    </div>
+                  </div>
+                )}
+                {answerState === "answering" && (
+                  <div className="absolute bottom-3 left-3 right-3">
+                    <div className="flex items-center gap-2 rounded-lg bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+                      <Mic className="h-4 w-4 text-primary" />
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-primary transition-all duration-100" style={{ width: `${audioLevel}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
   )
@@ -504,21 +515,41 @@ function InterviewPageInner() {
     audioInput: "checking",
   })
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null)
+  const [isQuestionAudioPlaying, setIsQuestionAudioPlaying] = useState(false)
 
   // 면접관 TTS 재생 — 토론면접과 동일하게 단일 오디오 요소를 재사용한다.
   // (자동재생 정책 우회: 사전점검 완료 클릭 시점에 미리 활성화해 둠 → 이후 질문 표시 때 자동재생 가능)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const playQuestionAudio = useCallback((url: string | null | undefined) => {
-    if (!url) return // null(=TTS 미지원/비활성)이면 재생하지 않음
+    if (!url) {
+      audioRef.current?.pause()
+      setIsQuestionAudioPlaying(false)
+      return
+    }
     const audio = audioRef.current ?? (audioRef.current = new Audio())
+    audio.onplaying = () => setIsQuestionAudioPlaying(true)
+    audio.onended = () => setIsQuestionAudioPlaying(false)
+    audio.onpause = () => setIsQuestionAudioPlaying(false)
+    audio.onerror = () => setIsQuestionAudioPlaying(false)
     audio.pause()
     audio.src = url
     audio.currentTime = 0
-    audio.play().catch((e) => console.warn("[interview] TTS 자동재생 실패:", e))
+    audio.play().catch((e) => {
+      setIsQuestionAudioPlaying(false)
+      console.warn("[interview] TTS 자동재생 실패:", e)
+    })
   }, [])
   // 언마운트 시 정지
   useEffect(() => {
-    return () => { audioRef.current?.pause() }
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.onplaying = null
+        audioRef.current.onended = null
+        audioRef.current.onpause = null
+        audioRef.current.onerror = null
+        audioRef.current.pause()
+      }
+    }
   }, [])
 
   // Real device check
@@ -805,6 +836,12 @@ function InterviewPageInner() {
       company={searchParams?.get("company") || undefined}
       role={searchParams?.get("role") || undefined}
       stage={searchParams?.get("stage") || undefined}
+      aiInterviewer={searchParams?.get("aiInterviewer") || undefined}
+      interviewerVideo={{
+        speakingVideoUrl: searchParams?.get("speakingVideoUrl"),
+        silenceVideoUrl: searchParams?.get("silenceVideoUrl"),
+      }}
+      isQuestionAudioPlaying={isQuestionAudioPlaying}
       onEnd={handleInterviewEnd}
       onExitEarly={handleInterviewExitEarly}
       stream={mediaStream}
