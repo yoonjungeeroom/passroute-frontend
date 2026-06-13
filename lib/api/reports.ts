@@ -1,5 +1,5 @@
 import { apiFetch, getAuthHeaders } from "./client"
-import type { InterviewReportResponse, DebateReportResponse, SelfIntroReportResponse } from "@/types/report"
+import type { InterviewReportResponse, DebateReportResponse, SelfIntroReportResponse, CsTopicAnalysisResponse } from "@/types/report"
 
 export interface ReportListItem {
   reportType: string
@@ -57,6 +57,15 @@ export async function deleteDebateReport(sessionId: number): Promise<void> {
     `/reports/debate/${sessionId}`,
     { method: "DELETE" },
     "리포트 삭제에 실패했습니다"
+  )
+}
+
+// 1:1 기술면접 이력을 CS 토픽별로 집계한 분석 결과. 이력 0건이어도 200 + 빈(topics:[]) 응답.
+export async function getCsTopicAnalysis(): Promise<CsTopicAnalysisResponse> {
+  return apiFetch<CsTopicAnalysisResponse>(
+    "/interviews/cs-topics/analysis",
+    { method: "GET" },
+    "토픽 분석 조회에 실패했습니다"
   )
 }
 

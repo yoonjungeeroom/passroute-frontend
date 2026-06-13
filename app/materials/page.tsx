@@ -1,24 +1,31 @@
 "use client"
 
-import { Sidebar } from "@/components/dashboard/sidebar"
-import { MobileHeader } from "@/components/dashboard/mobile-header"
+import { useState, useEffect } from "react"
+import { TopNav } from "@/components/dashboard/top-nav"
 import { DocumentAssets } from "@/components/dashboard/document-assets"
+import { getUserProfile } from "@/lib/api/user"
 
 export default function MaterialsPage() {
+  const [userName, setUserName] = useState("")
+
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null
+    if (token) {
+      getUserProfile()
+        .then((u) => setUserName(u.name))
+        .catch(() => {})
+    }
+  }, [])
+
   return (
-    <div className="min-h-screen bg-background">
-      <Sidebar />
-      <MobileHeader />
-      <main className="pt-14 lg:pl-64 lg:pt-0">
-        <div className="sticky top-14 z-30 border-b border-border/30 bg-background/95 backdrop-blur-sm lg:top-0">
-          <div className="px-4 pt-8 pb-5 sm:px-6 lg:px-8">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">이력서/포트폴리오</h1>
-            <p className="text-sm text-muted-foreground mt-1">이력서와 포트폴리오 자료를 관리하세요.</p>
-          </div>
+    <div className="min-h-screen w-full bg-slate-50 text-slate-900">
+      <TopNav userName={userName} />
+      <main className="mx-auto w-full max-w-[1040px] px-6 py-9">
+        <div className="mb-6">
+          <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900">이력서/포트폴리오</h1>
+          <p className="mt-1 text-sm text-slate-500">이력서와 포트폴리오 자료를 관리하세요.</p>
         </div>
-        <div className="px-4 py-6 sm:px-6 lg:px-8">
-          <DocumentAssets />
-        </div>
+        <DocumentAssets />
       </main>
     </div>
   )

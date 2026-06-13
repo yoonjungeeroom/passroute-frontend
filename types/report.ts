@@ -130,3 +130,29 @@ export interface SelfIntroReportResponse {
   // AI 종합 피드백 (cross-session). null이면 AI 실패/미배포 → growthSummary로 폴백.
   aiSummary: { overall: string; repeatedWeakness: string; nextSteps: string } | null
 }
+
+// CS 토픽 분석 (GET /interviews/cs-topics/analysis) — 1:1 기술면접 이력을 토픽별로 집계
+export type CsTopic =
+  | "DATA_STRUCTURE"
+  | "ALGORITHM"
+  | "NETWORK"
+  | "OS"
+  | "DATABASE"
+  | "CONCURRENCY"
+  | "MEMORY_GC"
+  | "LANGUAGE"
+  | "FRAMEWORK"
+  | "DESIGN_PATTERN"
+  | "SECURITY"
+
+export interface CsTopicStat {
+  topic: CsTopic
+  questionCount: number
+  averagePercentage: number
+  recommendation: string
+}
+
+export interface CsTopicAnalysisResponse {
+  topics: CsTopicStat[]
+  weakTopics: CsTopicStat[]
+}

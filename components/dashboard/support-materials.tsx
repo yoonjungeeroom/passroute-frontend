@@ -2,17 +2,14 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { PenTool, Plus, ChevronRight, Pencil, Play, FileText, Briefcase, Loader2 } from "lucide-react"
+import { Plus, ChevronRight, Pencil, Play, FileText, Briefcase, Loader2 } from "lucide-react"
 import { SelfIntroModal } from "./self-intro-modal"
 import { getSelfIntroList, type SelfIntroResponse } from "@/lib/api/self-intro"
 
 const careerLevelLabels: Record<string, string> = {
   INTERN: "인턴",
-  JUNIOR: "주니어",
-  SENIOR: "시니어",
+  JUNIOR: "신입",
+  SENIOR: "경력",
 }
 
 function formatDate(dateStr: string): string {
@@ -50,12 +47,10 @@ export function SupportMaterials({ onStartInterview }: SupportMaterialsProps) {
     setEditingId(id)
     setIsSheetOpen(true)
   }
-
   const handleAddNew = () => {
     setEditingId(null)
     setIsSheetOpen(true)
   }
-
   const handleModalClose = (open: boolean) => {
     setIsSheetOpen(open)
     if (!open) fetchSelfIntros()
@@ -63,106 +58,57 @@ export function SupportMaterials({ onStartInterview }: SupportMaterialsProps) {
 
   return (
     <>
-      <Card className="border-[var(--color-border)] bg-white">
-        <CardHeader className="flex flex-row items-center justify-between pb-4">
-          <CardTitle className="flex items-center gap-2 text-base font-semibold text-[var(--color-text)]">
-            <PenTool className="h-4.5 w-4.5 text-[var(--color-accent)]" />
-            자기소개서
-          </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-            onClick={() => router.push("/self-intro")}
-          >
-            전체보기
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-[var(--color-text-muted)]" />
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {selfIntros.map((intro) => (
-                <div
-                  key={intro.id}
-                  className="group relative flex flex-col rounded-xl border border-[var(--color-border)] bg-white p-4 transition-all duration-300 hover:border-[var(--color-accent)]"
-                >
-                  {/* Header */}
-                  <div className="mb-3 flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-sm font-semibold text-muted-foreground">
-                        {intro.companyName.slice(0, 1)}
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="truncate text-sm font-semibold text-[var(--color-text)]">{intro.companyName}</h4>
-                        <p className="flex items-center gap-1 truncate text-xs text-[var(--color-text-muted)]">
-                          <Briefcase className="h-3 w-3" />
-                          {intro.jobPosition}
-                        </p>
-                      </div>
+      <section>
+        <div className="mb-4 flex items-end justify-between">
+          <h3 className="text-[22px] font-extrabold tracking-tight text-slate-900">자기소개서</h3>
+          <button onClick={() => router.push("/self-intro")} className="flex items-center gap-0.5 text-xs font-semibold text-slate-400 hover:text-slate-600">
+            전체보기 <ChevronRight size={14} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white py-10">
+            <Loader2 size={24} className="animate-spin text-slate-300" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {selfIntros.map((intro) => (
+              <div key={intro.id} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-4 transition-colors hover:border-blue-300">
+                <div className="mb-3 flex items-start justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-slate-100 text-base font-extrabold text-slate-500">{intro.companyName.slice(0, 1)}</span>
+                    <div className="min-w-0">
+                      <h4 className="truncate text-sm font-bold text-slate-900">{intro.companyName}</h4>
+                      <p className="flex items-center gap-1 truncate text-xs text-slate-400"><Briefcase size={12} /> {intro.jobPosition}</p>
                     </div>
-                    <Badge variant="outline" className="border-[var(--color-border)] bg-white text-[10px] text-[var(--color-text-muted)]">
-                      {careerLevelLabels[intro.careerLevel] ?? intro.careerLevel}
-                    </Badge>
                   </div>
-
-                  {/* Info */}
-                  <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                    <Badge variant="outline" className="border-[var(--color-border)] bg-white gap-1">
-                      <FileText className="h-3 w-3" />
-                      {intro.itemCount}개 문항
-                    </Badge>
-                  </div>
-
-                  <p className="mb-3 text-xs text-[var(--color-text-muted)]">{formatDate(intro.updatedAt)} 업데이트</p>
-
-                  {/* Actions */}
-                  <div className="mt-auto flex gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="flex-1 gap-1 border-[var(--color-border)] bg-white text-xs text-[var(--color-text)]"
-                      onClick={() => handleEdit(String(intro.id))}
-                    >
-                      <Pencil className="h-3 w-3" />
-                      수정
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="flex-1 gap-1 bg-[var(--color-primary)] text-xs text-white hover:opacity-90"
-                      onClick={() => onStartInterview?.(intro.id)}
-                    >
-                      <Play className="h-3 w-3" />
-                      면접 시작
-                    </Button>
-                  </div>
+                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">{careerLevelLabels[intro.careerLevel] ?? intro.careerLevel}</span>
                 </div>
-              ))}
-
-              {/* Add New Card */}
-              <button
-                onClick={handleAddNew}
-                className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--color-border)] bg-white p-4 text-[var(--color-text-muted)] transition-all duration-300 hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-              >
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-current">
-                  <Plus className="h-6 w-6" />
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-500"><FileText size={11} /> {intro.itemCount}개 문항</span>
+                  <span className="text-[11px] text-slate-300">·</span>
+                  <span className="text-[11px] text-slate-400">{formatDate(intro.updatedAt)} 업데이트</span>
                 </div>
-                <span className="text-sm font-medium">새 자기소개서 추가</span>
-              </button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <div className="mt-auto flex gap-2">
+                  <button onClick={() => handleEdit(String(intro.id))} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                    <Pencil size={13} /> 수정
+                  </button>
+                  <button onClick={() => onStartInterview?.(intro.id)} className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-slate-900 py-2 text-xs font-bold text-white hover:bg-slate-800">
+                    <Play size={12} fill="currentColor" strokeWidth={0} /> 면접 시작
+                  </button>
+                </div>
+              </div>
+            ))}
 
-      <SelfIntroModal
-        open={isSheetOpen}
-        onOpenChange={handleModalClose}
-        editMode={editingId !== null}
-      />
+            <button onClick={handleAddNew} className="flex min-h-[176px] flex-col items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400 transition-colors hover:border-blue-400 hover:text-blue-500">
+              <span className="grid h-12 w-12 place-items-center rounded-xl border-2 border-dashed border-current"><Plus size={22} /></span>
+              <span className="text-sm font-bold">새 자기소개서 추가</span>
+            </button>
+          </div>
+        )}
+      </section>
+
+      <SelfIntroModal open={isSheetOpen} onOpenChange={handleModalClose} editMode={editingId !== null} />
     </>
   )
 }

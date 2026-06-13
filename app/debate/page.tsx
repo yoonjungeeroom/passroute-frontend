@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { PreCheckScreen } from "@/components/pre-check-screen"
 import { cn } from "@/lib/utils"
+import { ROUND_LABEL } from "@/lib/debate-rounds"
 import { useFaceAnalysis } from "@/hooks/use-face-analysis"
 
 interface DeviceStatus {
@@ -47,6 +48,7 @@ import {
   type DebateRound,
   type DebateBranchChoice,
   type SpeakerType,
+  type PersonaVideo,
 } from "@/lib/api/debate"
 import { ApiError } from "@/lib/api/client"
 import { useDebateSTT } from "@/hooks/use-debate-stt"
@@ -59,13 +61,9 @@ const STATE_TO_ROUND: Record<string, DebateRound> = {
   CLOSING_USER: "CLOSING",
 }
 
-const roundLabel: Record<DebateRound, string> = {
-  OPENING: "개회",
-  REBUTTAL_1: "반론1",
-  REBUTTAL_2: "반론2",
-  CLOSING: "마무리",
-  MODERATION: "사회",
-}
+// 실전모드 한 턴 제한시간(초). 연습모드엔 적용하지 않는다.
+const EXAM_TURN_LIMIT_SEC = 120
+
 
 type Phase = "precheck" | "prep" | "debating" | "ending"
 
@@ -93,12 +91,47 @@ function AnalysisPanel({ title, children }: { title: string; children: React.Rea
   )
 }
 
+function PersonaVideoPlayer({
+  video,
+  speaking,
+}: {
+  video?: PersonaVideo | null
+  speaking: boolean
+}) {
+  const src = speaking ? video?.speakingVideoUrl : video?.silenceVideoUrl
+
+  if (!src) {
+    return (
+      <>
+        <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
+        <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
+          <Video className="h-6 w-6 opacity-70" />
+          <span className="font-mono text-[10px]">아바타 영상 준비 중</span>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <video
+      key={src}
+      src={src}
+      autoPlay
+      loop
+      muted
+      playsInline
+      className="h-full w-full object-cover"
+    />
+  )
+}
+
 function DebatePageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const topicIdParam = searchParams?.get("topicId")
   const stanceParam = searchParams?.get("stance") as "PRO" | "CON" | null
   const personaIdParam = searchParams?.get("personaId")
+  const introIdParam = searchParams?.get("introId")
   const difficultyParam = searchParams?.get("difficulty") as "EASY" | "NORMAL" | "HARD" | null
   const topicTitleParam = searchParams?.get("topicTitle") // 생성 주제는 정적 목록에 없어 배너 제목 폴백용
   // 연습/실전 모드. modal이 "practice" | "real"로 전달 (real = 실전/EXAM). 누락 시 연습으로 간주.
@@ -108,6 +141,7 @@ function DebatePageInner() {
   // 쿼리스트링을 한 번만 안전하게 파싱 (누락/비숫자는 NaN, 잘못된 stance는 false)
   const topicId = topicIdParam ? Number(topicIdParam) : NaN
   const personaId = personaIdParam ? Number(personaIdParam) : NaN
+  const introId = introIdParam ? Number(introIdParam) : NaN
   const isValidStance = stanceParam === "PRO" || stanceParam === "CON"
 
   // Pre-check state
@@ -132,6 +166,10 @@ function DebatePageInner() {
   // Debate state
   const [sessionId, setSessionId] = useState<number | null>(null)
   const [debateState, setDebateState] = useState<DebateStateResponse | null>(null)
+  const [sessionVideos, setSessionVideos] = useState<{
+    moderator?: PersonaVideo | null
+    opponent?: PersonaVideo | null
+  }>({})
   const [submitting, setSubmitting] = useState(false)
   // 분기 선택(반박 한 번 더 / 마무리) 전송 중인 선택지. 어느 버튼에 스피너를 띄울지 구분용.
   const [branchPending, setBranchPending] = useState<DebateBranchChoice | null>(null)
@@ -163,6 +201,7 @@ function DebatePageInner() {
   const userMsgSeqRef = useRef(0) // 내 발언 버블의 안정 key 생성용
   // 현재 공개 중인 턴의 화자 — 상대 카드 "발언 중" 표시를 화자에 맞게 켜기 위함(면접관 cue 땐 끔).
   const [revealingSpeaker, setRevealingSpeaker] = useState<SpeakerType | null>(null)
+  const [audioPlayingSpeaker, setAudioPlayingSpeaker] = useState<SpeakerType | null>(null)
   // 상대 발언 버블을 TTS 재생 진행률에 맞춰 문장 단위로 점진 노출하기 위한 상태.
   // null이면 모든 버블이 chatTurns의 전체 content를 그대로 보여준다(면접관 멘트는 항상 이 경로).
   const [streamingReveal, setStreamingReveal] = useState<StreamingReveal | null>(null)
@@ -209,8 +248,51 @@ function DebatePageInner() {
   const competitorSpeaking =
     revealingSpeaker === "AI_COMPETITOR" ||
     (polling && !debateState?.waitingForUser && !revealing)
-  // 내 발언 미확정 버블 표시 — 말하는 중(라이브)이거나, 중지 후 확정/평가 대기 동안 그대로 유지(사라지지 않게).
-  const showPendingBubble = recording || (isPractice && (sttReady || awaitingEval || !!feedbackTurn))
+  const moderatorVideo = debateState?.moderator ?? sessionVideos.moderator
+  const opponentVideo = debateState?.opponent ?? sessionVideos.opponent ?? selectedPersona
+  // 내 발언 미확정 버블 표시 — 말하는 중(라이브)이거나, 녹음 완료 후(sttReady) 제출 전까지 그대로 유지.
+  // sttReady를 양 모드 공통으로 두어, 실전모드도 "녹음 완료"가 아니라 "제출" 시점에 사라진다(제출 시 setSttReady(false)).
+  const showPendingBubble = recording || sttReady || (isPractice && (awaitingEval || !!feedbackTurn))
+
+  // 실전모드 한 턴 제한시간(초). 시간 종료 시 입력만 잠그고(녹음 중지·버튼 비활성), 제출은 사용자가 직접 누른다.
+  const [turnTimeLeft, setTurnTimeLeft] = useState(EXAM_TURN_LIMIT_SEC)
+  // 타이머는 "녹음 시작"을 처음 누른 시점부터 작동(생각하는 동안엔 흐르지 않게). 턴이 바뀌면 다시 false.
+  const [turnTimerStarted, setTurnTimerStarted] = useState(false)
+  // 사용자 입력 가능 구간(내 턴이면서 공개 큐 비워진 상태)
+  const userTurnActive = phase === "debating" && !!debateState?.waitingForUser && !revealing
+  const turnTimeUp = isExam && turnTimerStarted && turnTimeLeft <= 0
+
+  // 라운드 stepper 단계 — 분기 선택에 따라 동적. "토론 마무리하기"(반박2 건너뜀)를 고르면 반박2 칸이 빠져 3단계.
+  // 반박2를 거쳤거나(턴 존재) 아직 마무리에 도달하지 않았으면(분기 전·한 번 더 반박) 4단계로 노출.
+  const didRebuttal2 = !!debateState?.latestTurns?.some((t) => t.round === "REBUTTAL_2")
+  const atOrPastClosing = currentRound === "CLOSING" || phase === "ending"
+  const debateSteps = (didRebuttal2 || !atOrPastClosing
+    ? ["OPENING", "REBUTTAL_1", "REBUTTAL_2", "CLOSING"]
+    : ["OPENING", "REBUTTAL_1", "CLOSING"]) as DebateRound[]
+
+  // 실전모드: 새 사용자 턴이 시작되면(라운드 변경) 제한시간·타이머시작 플래그 리셋
+  useEffect(() => {
+    if (!isExam) return
+    setTurnTimeLeft(EXAM_TURN_LIMIT_SEC)
+    setTurnTimerStarted(false)
+  }, [isExam, currentRound])
+
+  // "녹음 시작"을 누르면 타이머 작동 시작(한 번 시작되면 그 턴 동안 유지 — 중지/재녹음해도 계속 흐름)
+  useEffect(() => {
+    if (isExam && recording) setTurnTimerStarted(true)
+  }, [isExam, recording])
+
+  // 실전모드: 타이머 시작 후 내 턴 구간에서 1초씩 카운트다운 (AI 발언/대기 중엔 멈춤)
+  useEffect(() => {
+    if (!isExam || !turnTimerStarted || !userTurnActive || turnTimeLeft <= 0) return
+    const t = setTimeout(() => setTurnTimeLeft((s) => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [isExam, turnTimerStarted, userTurnActive, turnTimeLeft])
+
+  // 시간 종료 시 녹음 강제 중지(입력 잠금). 제출은 사용자가 직접 누르게 둔다.
+  useEffect(() => {
+    if (turnTimeUp && recording) setRecording(false)
+  }, [turnTimeUp, recording])
 
   // 쿼리스트링 누락/오류 시 대시보드로 (모달을 거치지 않은 직접 접근)
   useEffect(() => {
@@ -288,6 +370,7 @@ function DebatePageInner() {
     setRevealedTurnIds(new Set())
     setRevealing(false)
     setRevealingSpeaker(null)
+    setAudioPlayingSpeaker(null)
     setStreamingReveal(null)
     setChatTurns([])
     userMsgSeqRef.current = 0
@@ -302,6 +385,8 @@ function DebatePageInner() {
         audioRef.current.onended = null
         audioRef.current.onerror = null
         audioRef.current.ontimeupdate = null
+        audioRef.current.onplaying = null
+        audioRef.current.onpause = null
         audioRef.current.pause()
       }
       setStreamingReveal(null)
@@ -325,6 +410,8 @@ function DebatePageInner() {
       audioRef.current.onended = null
       audioRef.current.onerror = null
       audioRef.current.ontimeupdate = null
+      audioRef.current.onplaying = null
+      audioRef.current.onpause = null
     }
 
     const turn = revealQueueRef.current.shift()
@@ -332,6 +419,7 @@ function DebatePageInner() {
       isRevealingRef.current = false
       setRevealing(false)
       setRevealingSpeaker(null)
+      setAudioPlayingSpeaker(null)
       setStreamingReveal(null)
       return
     }
@@ -357,9 +445,23 @@ function DebatePageInner() {
       // handleCreateSession에서 활성화해 둔 단일 오디오 요소를 재사용 (자동재생 차단 방지)
       const audio = audioRef.current ?? (audioRef.current = new Audio())
       const finishStreaming = () => setStreamingReveal(prev => (prev?.key === streamKey ? null : prev))
-      audio.onended = () => { finishStreaming(); revealNext() }
+      audio.pause()
+      setAudioPlayingSpeaker(null)
+      audio.src = turn.audioUrl
+      audio.currentTime = 0
+      audio.onplaying = () => setAudioPlayingSpeaker(turn.speakerType)
+      audio.onpause = () => setAudioPlayingSpeaker(null)
+      audio.onended = () => {
+        setAudioPlayingSpeaker(null)
+        finishStreaming()
+        revealNext()
+      }
       // 재생 중 디코드/로드 오류로 ended가 안 와도 막히지 않도록 (입력창이 큐에 묶여 있으므로 중요)
-      audio.onerror = () => { finishStreaming(); advanceTimerRef.current = setTimeout(revealNext, 600) }
+      audio.onerror = () => {
+        setAudioPlayingSpeaker(null)
+        finishStreaming()
+        advanceTimerRef.current = setTimeout(revealNext, 600)
+      }
       // 재생 진행률에 맞춰 노출할 문장 수를 늘려간다 — 음성이 빨리 끝나면 텍스트도 따라잡고, onended에서 전체 노출로 마무리.
       audio.ontimeupdate = () => {
         if (!streaming || !isFinite(audio.duration) || audio.duration <= 0) return
@@ -367,12 +469,10 @@ function DebatePageInner() {
         const target = Math.min(sentences.length, Math.max(1, Math.ceil(ratio * sentences.length)))
         setStreamingReveal(prev => (prev && prev.key === streamKey && target > prev.visibleCount ? { ...prev, visibleCount: target } : prev))
       }
-      audio.pause()
-      audio.src = turn.audioUrl
-      audio.currentTime = 0
       audio.play().catch((e) => {
         console.warn("[debate] TTS 자동재생 실패:", e)
         // 재생 실패해도 다음 턴으로 진행 (한 턴 실패가 이후 공개를 막지 않도록)
+        setAudioPlayingSpeaker(null)
         finishStreaming()
         advanceTimerRef.current = setTimeout(revealNext, 600)
       })
@@ -391,8 +491,11 @@ function DebatePageInner() {
       audioRef.current.onended = null
       audioRef.current.onerror = null
       audioRef.current.ontimeupdate = null
+      audioRef.current.onplaying = null
+      audioRef.current.onpause = null
       audioRef.current.pause()
     }
+    setAudioPlayingSpeaker(null)
     setStreamingReveal(null)
     revealNext()
   }, [revealNext])
@@ -444,8 +547,10 @@ function DebatePageInner() {
         personaId,
         difficulty: selectedDifficulty,
         mode: isExam ? "real" : "practice",
+        ...(isNaN(introId) ? {} : { introId }),
       })
       setSessionId(res.sessionId)
+      setSessionVideos({ moderator: res.moderator, opponent: res.opponent })
       if (isExam) {
         // 실전: 준비시간 카운트다운 후 토론 시작 (start는 prep 종료 시 호출)
         const secs = res.prepSeconds ?? 60
@@ -757,42 +862,74 @@ function DebatePageInner() {
     const mm = String(Math.floor(prepRemaining / 60)).padStart(2, "0")
     const ss = String(prepRemaining % 60).padStart(2, "0")
     const progress = prepSeconds > 0 ? prepRemaining / prepSeconds : 0
+    const CIRCUMFERENCE = 2 * Math.PI * 70
+    const offset = CIRCUMFERENCE * (1 - progress)
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6">
-        <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
-          <Badge variant="outline" className="gap-1.5 border-rose-500/30 bg-rose-500/10 text-rose-400">
-            <Clock className="h-3.5 w-3.5" />
+      <div className="flex min-h-screen flex-col items-center justify-center bg-white p-6">
+        <div className="flex w-full max-w-sm flex-col items-center gap-0 text-center">
+
+          {/* Status pill */}
+          <div className="mb-7 flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-600">
+            <Clock className="h-3 w-3" />
             실전 모드 · 준비 시간
-          </Badge>
-          <div>
-            <p className="text-sm text-muted-foreground">주제</p>
-            <h1 className="mt-1 text-lg font-semibold text-foreground">{selectedTopic?.title ?? topicTitleParam}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              내 입장: {selectedStance === "PRO" ? "찬성" : "반대"}
-            </p>
           </div>
-          {/* 카운트다운 */}
-          <div className="relative flex h-44 w-44 items-center justify-center">
-            <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="45" fill="none" strokeWidth="6" className="stroke-secondary" />
+
+          {/* Topic info */}
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-400">주제</p>
+          <h1 className="mb-2 text-[17px] font-bold leading-snug text-slate-900">
+            {selectedTopic?.title ?? topicTitleParam}
+          </h1>
+          <p className="mb-7 whitespace-nowrap text-[13px] text-slate-500">
+            내 입장:{" "}
+            <span className="font-semibold text-blue-600">
+              {selectedStance === "PRO" ? "찬성" : "반대"}
+            </span>
+          </p>
+
+          {/* Ring */}
+          <div className="relative mb-8 h-44 w-44">
+            <svg
+              viewBox="0 0 160 160"
+              className="absolute inset-0 h-full w-full -rotate-90"
+            >
+              <circle cx="80" cy="80" r="70" fill="none" stroke="#dbeafe" strokeWidth="5" />
               <circle
-                cx="50" cy="50" r="45" fill="none" strokeWidth="6" strokeLinecap="round"
-                className="stroke-primary transition-[stroke-dashoffset] duration-1000 ease-linear"
-                strokeDasharray={2 * Math.PI * 45}
-                strokeDashoffset={2 * Math.PI * 45 * (1 - progress)}
+                cx="80" cy="80" r="70"
+                fill="none"
+                stroke="#2563eb"
+                strokeWidth="5"
+                strokeLinecap="round"
+                strokeDasharray={CIRCUMFERENCE}
+                strokeDashoffset={offset}
+                style={{ transition: "stroke-dashoffset 1s linear" }}
               />
             </svg>
-            <span className="text-4xl font-bold tabular-nums text-foreground">{mm}:{ss}</span>
+            <div className="absolute left-1/2 top-1/2 flex h-[124px] w-[124px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full bg-white shadow-[0_2px_12px_rgba(37,99,235,0.12)]">
+              <span
+                className="text-[36px] font-bold tabular-nums leading-none tracking-tight text-slate-900"
+                style={{ fontFamily: "'SpaceGrotesk', sans-serif" }}
+              >
+                {mm}:{ss}
+              </span>
+              <span className="mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-blue-300">준비 중</span>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
+
+          {/* Description */}
+          <p className="mb-8 text-[13px] leading-relaxed text-slate-400">
             준비 시간 동안 논리를 정리하세요.<br />
             시간이 끝나면 자동으로 토론이 시작됩니다.
           </p>
-          {/* 준비시간 건너뛰기 — 카운트다운을 0으로 만들어 기존 시작 로직(useEffect)을 즉시 트리거 */}
-          <Button onClick={() => setPrepRemaining(0)} className="gap-1.5">
+
+          {/* Skip button */}
+          <button
+            onClick={() => setPrepRemaining(0)}
+            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-6 py-3 text-[13px] font-semibold text-blue-600 transition-colors hover:border-blue-100 hover:bg-blue-50"
+          >
             건너뛰고 바로 시작
             <ArrowRight className="h-4 w-4" />
-          </Button>
+          </button>
+
         </div>
       </div>
     )
@@ -828,7 +965,7 @@ function DebatePageInner() {
 
       {/* Round stepper */}
       <div className="flex h-11 shrink-0 items-center justify-center gap-2 border-b border-slate-200 bg-white">
-        {(["OPENING", "REBUTTAL_1", "REBUTTAL_2", "CLOSING"] as DebateRound[]).map((r, i, arr) => {
+        {debateSteps.map((r, i, arr) => {
           const curIdx = currentRound ? arr.indexOf(currentRound) : -1
           const active = r === currentRound && phase === "debating"
           const done = curIdx > i || phase === "ending"
@@ -839,7 +976,7 @@ function DebatePageInner() {
                 <span className={cn("flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold", active ? "bg-blue-600 text-white" : done ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400")}>
                   {i + 1}
                 </span>
-                {roundLabel[r]}
+                {ROUND_LABEL[r]}
               </span>
             </div>
           )
@@ -850,16 +987,16 @@ function DebatePageInner() {
         <main className="flex min-h-0 flex-1 gap-3 p-3">
           {/* Left: 참가자 스트립 (사회자 / 상대 / 나) */}
           <div className="flex w-60 shrink-0 flex-col gap-3">
-            {/* 사회자 — 아바타 영상 자리 */}
+            {/* 사회자 */}
             <div className={cn(
-              "relative flex-1 overflow-hidden rounded-lg border bg-white shadow-sm transition-all",
-              revealingSpeaker === "AI_INTERVIEWER" ? "border-blue-500 ring-2 ring-blue-500/20" : "border-slate-200"
+              "relative overflow-hidden rounded-lg border shadow-sm transition-all",
+              isPractice ? "flex-1 bg-white" : "aspect-[4/3] w-full shrink-0 bg-slate-100",
+              revealingSpeaker === "AI_INTERVIEWER" ? "border-blue-500 ring-2 ring-blue-500/20" : (isPractice ? "border-slate-200" : "border-slate-300")
             )}>
-              <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
-              <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
-                <Video className="h-6 w-6 opacity-70" />
-                <span className="font-mono text-[10px]">아바타 영상 자리</span>
-              </div>
+              <PersonaVideoPlayer
+                video={moderatorVideo}
+                speaking={audioPlayingSpeaker === "AI_INTERVIEWER"}
+              />
               {revealingSpeaker === "AI_INTERVIEWER" && (
                 <div className="absolute left-0 right-0 top-3 flex items-end justify-center gap-[3px]">
                   {Array.from({ length: 10 }).map((_, i) => (
@@ -872,16 +1009,16 @@ function DebatePageInner() {
               </div>
             </div>
 
-            {/* 상대 토론자 — 아바타 영상 자리 */}
+            {/* 상대 토론자 */}
             <div className={cn(
-              "relative flex-1 overflow-hidden rounded-lg border bg-white shadow-sm transition-all",
-              competitorSpeaking ? "border-blue-500 ring-2 ring-blue-500/20" : "border-slate-200"
+              "relative overflow-hidden rounded-lg border shadow-sm transition-all",
+              isPractice ? "flex-1 bg-white" : "aspect-[4/3] w-full shrink-0 bg-slate-100",
+              competitorSpeaking ? "border-blue-500 ring-2 ring-blue-500/20" : (isPractice ? "border-slate-200" : "border-slate-300")
             )}>
-              <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
-              <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
-                <Video className="h-6 w-6 opacity-70" />
-                <span className="font-mono text-[10px]">아바타 영상 자리</span>
-              </div>
+              <PersonaVideoPlayer
+                video={opponentVideo}
+                speaking={audioPlayingSpeaker === "AI_COMPETITOR"}
+              />
               {competitorSpeaking && (
                 <div className="absolute left-0 right-0 top-3 flex items-end justify-center gap-[3px]">
                   {Array.from({ length: 10 }).map((_, i) => (
@@ -928,7 +1065,7 @@ function DebatePageInner() {
               <div className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                 <div className="mb-1.5 flex items-center gap-2">
                   <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600">사회자</span>
-                  <span className="rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold text-amber-600">{roundLabel[latestInterviewerTurn.round] ?? latestInterviewerTurn.round}</span>
+                  <span className="rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold text-amber-600">{ROUND_LABEL[latestInterviewerTurn.round] ?? latestInterviewerTurn.round}</span>
                 </div>
                 <p className="text-sm leading-relaxed text-slate-900">{latestInterviewerTurn.content}</p>
               </div>
@@ -968,27 +1105,30 @@ function DebatePageInner() {
                 )}
               </div>
             ) : (
-              <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-sm">
-                {mediaStream ? (
-                  <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" />
-                ) : (
-                  <div className="flex h-full items-center justify-center"><User className="h-20 w-20 text-slate-300" /></div>
-                )}
-                {recording && (
-                  <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-slate-900/55 px-3 py-1 backdrop-blur-sm">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
-                    <span className="text-xs font-bold tracking-wider text-white">REC</span>
+              <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+                {/* 실전 — 내 카메라를 4:3 고정 비율로 중앙에 (하단 입력·제한시간이 떠도 크기 불변) */}
+                <div className="relative aspect-[4/3] h-[min(50vh,460px,calc(100vh-380px))] shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-sm">
+                  {mediaStream ? (
+                    <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center"><User className="h-20 w-20 text-slate-300" /></div>
+                  )}
+                  {recording && (
+                    <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-slate-900/55 px-3 py-1 backdrop-blur-sm">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+                      <span className="text-xs font-bold tracking-wider text-white">REC</span>
+                    </div>
+                  )}
+                  <div className="absolute bottom-4 left-4 rounded-lg bg-slate-900/55 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">나 · {selectedStance === "PRO" ? "찬성" : "반대"}</div>
+                  <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full bg-slate-900/55 whitespace-nowrap px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
+                    <Lock className="h-3 w-3" />발언 내용은 종료 후 리포트에서 확인
                   </div>
-                )}
-                <div className="absolute bottom-4 left-4 rounded-lg bg-slate-900/55 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">나 · {selectedStance === "PRO" ? "찬성" : "반대"}</div>
-                <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full bg-slate-900/55 whitespace-nowrap px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
-                  <Lock className="h-3 w-3" />발언 내용은 종료 후 리포트에서 확인
                 </div>
               </div>
             )}
 
-            {/* 음성 건너뛰기 — 사회자/상대 TTS를 끝까지 듣지 않고 진행 */}
-            {revealing && (
+            {/* 음성 건너뛰기 — 사회자/상대 TTS를 끝까지 듣지 않고 진행 (연습모드만, 실전은 숨김) */}
+            {revealing && isPractice && (
               <div className="flex shrink-0 justify-center">
                 <button onClick={handleSkipAudio} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50">
                   <SkipForward className="h-3.5 w-3.5" />음성 건너뛰기
@@ -1038,13 +1178,26 @@ function DebatePageInner() {
                   </div>
                 ) : (
                   <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                    {/* 실전모드 제한시간 — 종료 시 입력만 잠금(녹음 버튼 비활성), 제출은 사용자가 직접 */}
+                    {isExam && (
+                      <div className="mb-2 flex items-center justify-between px-1">
+                        <span className="text-xs text-slate-500">제한 시간</span>
+                        <span className={cn(
+                          "font-mono text-sm font-bold tabular-nums",
+                          turnTimeUp ? "text-rose-500" : turnTimeLeft <= 30 ? "text-amber-600" : "text-slate-700"
+                        )}>
+                          {String(Math.floor(turnTimeLeft / 60)).padStart(2, "0")}:{String(turnTimeLeft % 60).padStart(2, "0")}
+                        </span>
+                      </div>
+                    )}
+                    {turnTimeUp && <p className="mb-2 px-1 text-xs font-medium text-rose-500">시간이 종료되었습니다. 제출 버튼을 눌러 다음으로 진행하세요.</p>}
                     {isPractice && sttFeedback && <p className="mb-2 px-1 text-xs text-amber-600">{sttFeedback}</p>}
                     {submitNotice && <p className="mb-2 px-1 text-xs text-rose-500">{submitNotice}</p>}
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant={recording ? "destructive" : "outline"}
                         onClick={() => { if (recording) { setRecording(false) } else { setSttReady(false); setSubmitNotice(null); setRecording(true) } }}
-                        disabled={submitting}
+                        disabled={submitting || turnTimeUp}
                         className="gap-2"
                       >
                         {recording ? (<><MicOff className="h-4 w-4" />녹음 완료</>) : (<><Mic className="h-4 w-4" />{sttTranscript ? "다시 녹음" : "녹음 시작"}</>)}

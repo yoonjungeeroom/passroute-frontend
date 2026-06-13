@@ -1,12 +1,19 @@
 "use client"
 
 import { useState, useMemo, useEffect, useCallback } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Sidebar } from "@/components/dashboard/sidebar"
-import { MobileHeader } from "@/components/dashboard/mobile-header"
+import { TopNav } from "@/components/dashboard/top-nav"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -30,7 +37,7 @@ import {
   Trash2,
   RotateCcw,
   Loader2,
-  MapPin
+  MapPin,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Schedule } from "@/types/schedule"
@@ -43,23 +50,15 @@ import {
 } from "@/lib/api/schedule"
 import { getSelfIntroList, type SelfIntroResponse } from "@/lib/api/self-intro"
 import { InterviewModal } from "@/components/dashboard/interview-modal"
+import { getUserProfile } from "@/lib/api/user"
 
 const DAYS = ["일", "월", "화", "수", "목", "금", "토"]
 const MONTHS = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"]
 
 const statusConfig: Record<Schedule["status"], { label: string; className: string }> = {
-  SCHEDULED: {
-    label: "예정",
-    className: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  },
-  COMPLETED: {
-    label: "완료",
-    className: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  },
-  CANCELLED: {
-    label: "취소",
-    className: "bg-rose-500/20 text-rose-400 border-rose-500/30",
-  },
+  SCHEDULED: { label: "예정", className: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
+  COMPLETED: { label: "완료", className: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
+  CANCELLED: { label: "취소", className: "bg-rose-500/20 text-rose-400 border-rose-500/30" },
 }
 
 interface ScheduleForm {
@@ -84,6 +83,7 @@ const emptyForm: ScheduleForm = {
 
 export default function SchedulePage() {
   const router = useRouter()
+  const [userName, setUserName] = useState("")
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -98,19 +98,27 @@ export default function SchedulePage() {
   const [submitting, setSubmitting] = useState(false)
   const [isInterviewModalOpen, setIsInterviewModalOpen] = useState(false)
 
-  // 일정 추가 모달 - 탭 및 데이터
   const [modalTab, setModalTab] = useState<"unscheduled" | "scheduled">("unscheduled")
   const [unscheduledIntros, setUnscheduledIntros] = useState<SelfIntroResponse[]>([])
   const [modalSchedules, setModalSchedules] = useState<Schedule[]>([])
   const [loadingModalData, setLoadingModalData] = useState(false)
-  // 일정 미정 탭 - 날짜 설정 인라인 폼
   const [schedulingIntroId, setSchedulingIntroId] = useState<number | null>(null)
   const [scheduleInputDate, setScheduleInputDate] = useState("")
   const [scheduleInputTime, setScheduleInputTime] = useState("")
-  // 일정 확정 탭 - 수정 인라인 폼
   const [editingModalScheduleId, setEditingModalScheduleId] = useState<number | null>(null)
   const [editModalForm, setEditModalForm] = useState({ date: "", time: "" })
   const [modalSubmitting, setModalSubmitting] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
+
+  // 사용자 이름 fetch
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null
+    if (token) {
+      getUserProfile()
+        .then((u) => setUserName(u.name))
+        .catch(() => {})
+    }
+  }, [])
 
   const fetchSchedules = useCallback(async () => {
     try {
@@ -138,8 +146,10 @@ export default function SchedulePage() {
         getSelfIntroList().catch(() => []),
         getScheduleList().catch(() => []),
       ])
-      const linkedIds = new Set(allScheds.map(s => s.selfIntroId).filter((id): id is number => id !== null))
-      setUnscheduledIntros(allIntros.filter(intro => !linkedIds.has(intro.id)))
+      const linkedIds = new Set(
+        allScheds.map((s) => s.selfIntroId).filter((id): id is number => id !== null)
+      )
+      setUnscheduledIntros(allIntros.filter((intro) => !linkedIds.has(intro.id)))
       setModalSchedules(allScheds)
     } finally {
       setLoadingModalData(false)
@@ -169,8 +179,8 @@ export default function SchedulePage() {
 
   const { daysInMonth, startingDay } = getDaysInMonth(currentDate)
 
-  const getInterviewsForDate = (day: number) => {
-    return schedules.filter(schedule => {
+  const getInterviewsForDate = (day: number) =>
+    schedules.filter((schedule) => {
       const d = new Date(schedule.interviewDate)
       return (
         d.getDate() === day &&
@@ -178,11 +188,10 @@ export default function SchedulePage() {
         d.getFullYear() === currentDate.getFullYear()
       )
     })
-  }
 
   const filteredSchedules = useMemo(() => {
     if (selectedDate) {
-      return schedules.filter(schedule => {
+      return schedules.filter((schedule) => {
         const d = new Date(schedule.interviewDate)
         return (
           d.getDate() === selectedDate.getDate() &&
@@ -206,9 +215,11 @@ export default function SchedulePage() {
 
   const handleDateClick = (day: number) => {
     const clickedDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
-    if (selectedDate &&
-        selectedDate.getDate() === day &&
-        selectedDate.getMonth() === currentDate.getMonth()) {
+    if (
+      selectedDate &&
+      selectedDate.getDate() === day &&
+      selectedDate.getMonth() === currentDate.getMonth()
+    ) {
       setSelectedDate(null)
     } else {
       setSelectedDate(clickedDate)
@@ -251,7 +262,7 @@ export default function SchedulePage() {
 
   const handleSaveModalEdit = async () => {
     if (!editingModalScheduleId || !editModalForm.date) return
-    const schedule = modalSchedules.find(s => s.id === editingModalScheduleId)
+    const schedule = modalSchedules.find((s) => s.id === editingModalScheduleId)
     if (!schedule) return
     try {
       setModalSubmitting(true)
@@ -292,13 +303,19 @@ export default function SchedulePage() {
   }
 
   const handleSaveEdit = async () => {
-    if (editingId === null || !formData.title || !formData.companyName || !formData.jobPosition || !formData.date) return
+    if (
+      editingId === null ||
+      !formData.title ||
+      !formData.companyName ||
+      !formData.jobPosition ||
+      !formData.date
+    )
+      return
     try {
       setSubmitting(true)
       const interviewDate = formData.time
         ? `${formData.date}T${formData.time}:00`
         : `${formData.date}T00:00:00`
-
       await updateSchedule(editingId, {
         title: formData.title,
         companyName: formData.companyName,
@@ -317,8 +334,6 @@ export default function SchedulePage() {
     }
   }
 
-  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
-
   const handleDelete = async (scheduleId: number) => {
     setDeleteTargetId(null)
     try {
@@ -327,10 +342,6 @@ export default function SchedulePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "일정 삭제에 실패했습니다")
     }
-  }
-
-  const handlePractice = () => {
-    setIsInterviewModalOpen(true)
   }
 
   const isToday = (day: number) => {
@@ -377,440 +388,417 @@ export default function SchedulePage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <Sidebar />
-      <MobileHeader />
+    <div className="min-h-screen w-full bg-slate-50 text-slate-900">
+      <TopNav userName={userName} />
 
-      <main className="flex flex-1 flex-col pt-14 lg:pl-64 lg:pt-0">
+      <main className="mx-auto w-full max-w-[1040px] px-6 py-9">
         {/* Header */}
-        <div className="sticky top-14 z-30 border-b border-border/30 bg-background/95 backdrop-blur-sm lg:top-0">
-          <div className="flex items-center justify-between px-4 pt-8 pb-5 sm:px-6 lg:px-8">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">면접 일정 관리</h1>
-              <p className="text-sm text-muted-foreground mt-1">전체 {schedules.length}개의 면접 일정</p>
-            </div>
-            <Button
-              onClick={() => {
-                setFormData(emptyForm)
-                setIsAddModalOpen(true)
-              }}
-              className="gap-1.5 bg-primary text-white hover:bg-primary/90"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">일정 관리</span>
-            </Button>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900">면접 일정 관리</h1>
+            <p className="mt-1 text-sm text-slate-500">전체 {schedules.length}개의 면접 일정</p>
           </div>
+          <Button
+            onClick={() => {
+              setFormData(emptyForm)
+              setIsAddModalOpen(true)
+            }}
+            className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
+          >
+            <Plus className="h-4 w-4" />
+            일정 관리
+          </Button>
         </div>
 
         {/* Error Banner */}
         {error && (
-          <div className="mx-4 mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-400 lg:mx-6">
+          <div className="mb-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-500">
             {error}
             <button className="ml-2 underline" onClick={() => setError("")}>닫기</button>
           </div>
         )}
 
         {/* Calendar Card */}
-        <div className="bg-background px-4 pb-2 pt-4 sm:px-6 lg:px-8">
-          <Card className="border-border bg-white rounded-xl">
-            <CardHeader className="pb-3 pt-4">
-              <div className="flex items-center justify-between">
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={handlePrevMonth}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <CardTitle className="text-base font-semibold text-foreground">
-                  {currentDate.getFullYear()}년 {MONTHS[currentDate.getMonth()]}
-                </CardTitle>
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={handleNextMonth}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="pb-4">
-              <div className="grid grid-cols-7 gap-1">
-                {DAYS.map((day, idx) => (
-                  <div
+        <Card className="mb-3 rounded-2xl border border-slate-200 bg-white">
+          <CardHeader className="pb-3 pt-4">
+            <div className="flex items-center justify-between">
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={handlePrevMonth}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <CardTitle className="text-base font-semibold text-slate-900">
+                {currentDate.getFullYear()}년 {MONTHS[currentDate.getMonth()]}
+              </CardTitle>
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={handleNextMonth}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <div className="grid grid-cols-7 gap-1">
+              {DAYS.map((day, idx) => (
+                <div
+                  key={day}
+                  className={cn(
+                    "py-2 text-center text-xs font-medium",
+                    idx === 0 ? "text-rose-400" : idx === 6 ? "text-blue-400" : "text-slate-400"
+                  )}
+                >
+                  {day}
+                </div>
+              ))}
+
+              {Array.from({ length: startingDay }).map((_, i) => (
+                <div key={`empty-${i}`} className="aspect-square p-0.5" />
+              ))}
+
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1
+                const interviews = getInterviewsForDate(day)
+                const hasInterviews = interviews.length > 0
+                const dayOfWeek = (startingDay + i) % 7
+
+                return (
+                  <button
                     key={day}
+                    onClick={() => handleDateClick(day)}
                     className={cn(
-                      "py-2 text-center text-xs font-medium",
-                      idx === 0 ? "text-rose-400" : idx === 6 ? "text-blue-400" : "text-muted-foreground"
+                      "relative flex aspect-square flex-col overflow-hidden rounded-lg p-1 text-sm transition-all",
+                      isSelected(day)
+                        ? "bg-blue-600 ring-2 ring-blue-600 ring-offset-2"
+                        : isToday(day)
+                        ? "bg-blue-50 ring-1 ring-blue-300"
+                        : hasInterviews
+                        ? "hover:bg-slate-100"
+                        : "hover:bg-slate-100"
                     )}
                   >
-                    {day}
-                  </div>
-                ))}
-
-                {Array.from({ length: startingDay }).map((_, i) => (
-                  <div key={`empty-${i}`} className="aspect-square p-0.5" />
-                ))}
-
-                {Array.from({ length: daysInMonth }).map((_, i) => {
-                  const day = i + 1
-                  const interviews = getInterviewsForDate(day)
-                  const hasInterviews = interviews.length > 0
-                  const dayOfWeek = (startingDay + i) % 7
-
-                  return (
-                    <button
-                      key={day}
-                      onClick={() => handleDateClick(day)}
+                    <span
                       className={cn(
-                        "relative flex aspect-square flex-col rounded-lg p-1 text-sm transition-all overflow-hidden",
-                        isSelected(day)
-                          ? "bg-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
-                          : isToday(day)
-                            ? "bg-secondary/40 ring-1 ring-primary/50"
-                            : hasInterviews
-                              ? "hover:bg-secondary/20"
-                              : "hover:bg-secondary/40"
-                      )}
-                    >
-                      <span className={cn(
                         "self-center text-xs font-medium leading-none",
                         isSelected(day)
-                          ? "text-primary-foreground"
+                          ? "text-white"
                           : isToday(day)
-                            ? "text-primary font-bold"
-                            : dayOfWeek === 0
-                              ? "text-rose-400"
-                              : dayOfWeek === 6
-                                ? "text-blue-400"
-                                : "text-foreground"
-                      )}>
-                        {day}
-                      </span>
-                      {hasInterviews && (
-                        <div className="mt-1 flex flex-col gap-0.5 overflow-hidden">
-                          {interviews.slice(0, 2).map((schedule) => (
-                            <span
-                              key={schedule.id}
-                              className={cn(
-                                "truncate rounded px-1 py-0.5 text-[9px] font-medium leading-tight lg:text-[10px]",
-                                isSelected(day)
-                                  ? "bg-primary-foreground/30 text-primary-foreground"
-                                  : "bg-primary/15 text-primary"
-                              )}
-                            >
-                              {schedule.companyName}
-                            </span>
-                          ))}
-                          {interviews.length > 2 && (
-                            <span className={cn(
-                              "text-center text-[8px] font-medium",
-                              isSelected(day) ? "text-primary-foreground/70" : "text-muted-foreground"
-                            )}>
-                              +{interviews.length - 2}
-                            </span>
-                          )}
-                        </div>
+                          ? "font-bold text-blue-600"
+                          : dayOfWeek === 0
+                          ? "text-rose-400"
+                          : dayOfWeek === 6
+                          ? "text-blue-400"
+                          : "text-slate-900"
                       )}
-                    </button>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
+                    >
+                      {day}
+                    </span>
+                    {hasInterviews && (
+                      <div className="mt-1 flex flex-col gap-0.5 overflow-hidden">
+                        {interviews.slice(0, 2).map((schedule) => (
+                          <span
+                            key={schedule.id}
+                            className={cn(
+                              "truncate rounded px-1 py-0.5 text-[9px] font-medium leading-tight lg:text-[10px]",
+                              isSelected(day)
+                                ? "bg-white/30 text-white"
+                                : "bg-blue-100 text-blue-700"
+                            )}
+                          >
+                            {schedule.companyName}
+                          </span>
+                        ))}
+                        {interviews.length > 2 && (
+                          <span
+                            className={cn(
+                              "text-center text-[8px] font-medium",
+                              isSelected(day) ? "text-white/70" : "text-slate-400"
+                            )}
+                          >
+                            +{interviews.length - 2}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
-          {/* Filter Status Bar */}
-          <div className="mt-3 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              {selectedDate ? (
-                <span className="flex items-center gap-2">
-                  <Badge variant="outline" className="border-primary/50 bg-primary/10 text-primary">
-                    {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
-                  </Badge>
-                  <span>{filteredSchedules.length}개 일정</span>
-                </span>
-              ) : (
+        {/* Filter Status Bar */}
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm text-slate-500">
+            {selectedDate ? (
+              <span className="flex items-center gap-2">
+                <Badge variant="outline" className="border-blue-300 bg-blue-50 text-blue-600">
+                  {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
+                </Badge>
                 <span>{filteredSchedules.length}개 일정</span>
-              )}
-            </p>
-            {selectedDate && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setSelectedDate(null)}
-              >
-                <RotateCcw className="h-3 w-3" />
-                전체 보기
-              </Button>
+              </span>
+            ) : (
+              <span>{filteredSchedules.length}개 일정</span>
             )}
-          </div>
+          </p>
+          {selectedDate && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-xs text-slate-400 hover:text-slate-700"
+              onClick={() => setSelectedDate(null)}
+            >
+              <RotateCcw className="h-3 w-3" />
+              전체 보기
+            </Button>
+          )}
         </div>
 
         {/* Schedule List */}
-        <div className="flex-1 overflow-auto px-4 py-4 sm:px-6 lg:px-8">
-          <Card className="border-border bg-white rounded-xl">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
-                <CalendarIcon className="h-4 w-4 text-primary" />
-                {selectedDate
-                  ? `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일 일정`
-                  : "전체 일정"
-                }
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : filteredSchedules.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <CalendarIcon className="mb-3 h-12 w-12 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">
-                    {selectedDate ? "선택한 날짜에 일정이 없습니다" : "등록된 면접 일정이 없습니다"}
-                  </p>
-                </div>
-              ) : (
-                filteredSchedules.map((schedule) => {
-                  const dDay = getDDay(schedule.interviewDate)
-                  const sConfig = statusConfig[schedule.status] || { label: schedule.status, className: "" }
-                  const isEditing = editingId === schedule.id
+        <Card className="rounded-2xl border border-slate-200 bg-white">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
+              <CalendarIcon className="h-4 w-4 text-blue-600" />
+              {selectedDate
+                ? `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일 일정`
+                : "전체 일정"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+              </div>
+            ) : filteredSchedules.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <CalendarIcon className="mb-3 h-12 w-12 text-slate-200" />
+                <p className="text-sm text-slate-400">
+                  {selectedDate ? "선택한 날짜에 일정이 없습니다" : "등록된 면접 일정이 없습니다"}
+                </p>
+              </div>
+            ) : (
+              filteredSchedules.map((schedule) => {
+                const dDay = getDDay(schedule.interviewDate)
+                const sConfig = statusConfig[schedule.status] || { label: schedule.status, className: "" }
+                const isEditing = editingId === schedule.id
 
-                  return (
-                    <div
-                      key={schedule.id}
-                      className={cn(
-                        "group relative rounded-xl border p-4 transition-all duration-300",
-                        isEditing
-                          ? "border-primary/50 bg-primary/10"
-                          : "border-border/50 bg-secondary/10 hover:bg-secondary/20"
-                      )}
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                        <div className="min-w-0 flex-1">
-                          <div className="mb-1 flex flex-wrap items-center gap-2">
-                            <h4 className="text-base font-semibold text-foreground">
-                              {schedule.companyName}
-                            </h4>
-                            <Badge variant="outline" className="border-primary/50 bg-primary/10 text-primary text-xs">
-                              {schedule.title}
-                            </Badge>
-                            <Badge variant="outline" className={cn("text-xs", sConfig.className)}>
-                              {sConfig.label}
-                            </Badge>
-                            {schedule.status === "SCHEDULED" && (
-                              <span className="text-xs font-medium text-muted-foreground">
-                                {getDDayLabel(dDay)}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Briefcase className="h-3.5 w-3.5" />
-                              {schedule.jobPosition}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <CalendarIcon className="h-3.5 w-3.5" />
-                              {formatScheduleDate(schedule.interviewDate)} {formatScheduleTime(schedule.interviewDate)}
-                            </span>
-                            {schedule.location && (
-                              <span className="flex items-center gap-1">
-                                <MapPin className="h-3.5 w-3.5" />
-                                {schedule.location}
-                              </span>
-                            )}
-                          </div>
+                return (
+                  <div
+                    key={schedule.id}
+                    className={cn(
+                      "group relative rounded-xl border p-4 transition-all duration-300",
+                      isEditing
+                        ? "border-blue-300 bg-blue-50"
+                        : "border-slate-200 bg-slate-50 hover:bg-white hover:shadow-sm"
+                    )}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <h4 className="text-base font-semibold text-slate-900">{schedule.companyName}</h4>
+                          <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-600 text-xs">
+                            {schedule.title}
+                          </Badge>
+                          <Badge variant="outline" className={cn("text-xs", sConfig.className)}>
+                            {sConfig.label}
+                          </Badge>
+                          {schedule.status === "SCHEDULED" && (
+                            <span className="text-xs font-medium text-slate-400">{getDDayLabel(dDay)}</span>
+                          )}
                         </div>
-
-                        {!isEditing && (
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1.5 border-border/50 text-xs hover:bg-secondary"
-                              onClick={() => handleEditClick(schedule)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                              수정
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1.5 border-rose-500/30 text-xs text-rose-400 hover:bg-rose-500/10"
-                              onClick={() => setDeleteTargetId(schedule.id)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              삭제
-                            </Button>
-                            {schedule.status === "SCHEDULED" && (
-                              <Button
-                                size="sm"
-                                className="gap-1.5 bg-primary text-white hover:bg-primary/90"
-                                onClick={handlePractice}
-                              >
-                                <Play className="h-3.5 w-3.5" />
-                                연습하기
-                              </Button>
-                            )}
-                          </div>
-                        )}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <Briefcase className="h-3.5 w-3.5" />
+                            {schedule.jobPosition}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <CalendarIcon className="h-3.5 w-3.5" />
+                            {formatScheduleDate(schedule.interviewDate)} {formatScheduleTime(schedule.interviewDate)}
+                          </span>
+                          {schedule.location && (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3.5 w-3.5" />
+                              {schedule.location}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Inline Edit Form */}
-                      {isEditing && (
-                        <div className="mt-4 space-y-3 rounded-lg border border-primary/30 bg-card p-4">
-                          <p className="text-sm font-medium text-foreground">일정 수정</p>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="space-y-1.5">
-                              <Label className="text-xs text-muted-foreground">제목</Label>
-                              <Input
-                                value={formData.title}
-                                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                                className="border-border/50 bg-secondary/30"
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs text-muted-foreground">회사명</Label>
-                              <Input
-                                value={formData.companyName}
-                                onChange={(e) => setFormData(prev => ({ ...prev, companyName: e.target.value }))}
-                                className="border-border/50 bg-secondary/30"
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs text-muted-foreground">직무</Label>
-                              <Input
-                                value={formData.jobPosition}
-                                onChange={(e) => setFormData(prev => ({ ...prev, jobPosition: e.target.value }))}
-                                className="border-border/50 bg-secondary/30"
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs text-muted-foreground">장소</Label>
-                              <Input
-                                value={formData.location}
-                                onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
-                                className="border-border/50 bg-secondary/30"
-                                placeholder="선택 사항"
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs text-muted-foreground">날짜</Label>
-                              <Input
-                                type="date"
-                                value={formData.date}
-                                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                                className="border-border/50 bg-secondary/30"
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs text-muted-foreground">시간</Label>
-                              <Input
-                                type="time"
-                                value={formData.time}
-                                onChange={(e) => setFormData(prev => ({ ...prev, time: e.target.value }))}
-                                className="border-border/50 bg-secondary/30"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">메모</Label>
-                            <Textarea
-                              value={formData.memo}
-                              onChange={(e) => setFormData(prev => ({ ...prev, memo: e.target.value }))}
-                              className="border-border/50 bg-secondary/30"
-                              placeholder="선택 사항"
-                              rows={2}
-                            />
-                          </div>
-                          <div className="flex justify-end gap-2">
+                      {!isEditing && (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 text-xs"
+                            onClick={() => handleEditClick(schedule)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            수정
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 border-rose-200 text-xs text-rose-500 hover:bg-rose-50"
+                            onClick={() => setDeleteTargetId(schedule.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            삭제
+                          </Button>
+                          {schedule.status === "SCHEDULED" && (
                             <Button
                               size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                setEditingId(null)
-                                setFormData(emptyForm)
-                              }}
+                              className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
+                              onClick={() => setIsInterviewModalOpen(true)}
                             >
-                              취소
+                              <Play className="h-3.5 w-3.5" />
+                              연습하기
                             </Button>
-                            <Button
-                              size="sm"
-                              className="bg-primary text-white hover:bg-primary/90"
-                              disabled={!formData.title || !formData.companyName || !formData.jobPosition || !formData.date || submitting}
-                              onClick={handleSaveEdit}
-                            >
-                              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "저장"}
-                            </Button>
-                          </div>
+                          )}
                         </div>
                       )}
                     </div>
-                  )
-                })
-              )}
-            </CardContent>
-          </Card>
-        </div>
+
+                    {/* Inline Edit Form */}
+                    {isEditing && (
+                      <div className="mt-4 space-y-3 rounded-lg border border-blue-200 bg-white p-4">
+                        <p className="text-sm font-semibold text-slate-900">일정 수정</p>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-slate-400">제목</Label>
+                            <Input
+                              value={formData.title}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-slate-400">회사명</Label>
+                            <Input
+                              value={formData.companyName}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, companyName: e.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-slate-400">직무</Label>
+                            <Input
+                              value={formData.jobPosition}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, jobPosition: e.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-slate-400">장소</Label>
+                            <Input
+                              value={formData.location}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
+                              placeholder="선택 사항"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-slate-400">날짜</Label>
+                            <Input
+                              type="date"
+                              value={formData.date}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, date: e.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-slate-400">시간</Label>
+                            <Input
+                              type="time"
+                              value={formData.time}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, time: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-slate-400">메모</Label>
+                          <Textarea
+                            value={formData.memo}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, memo: e.target.value }))}
+                            placeholder="선택 사항"
+                            rows={2}
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => { setEditingId(null); setFormData(emptyForm) }}
+                          >
+                            취소
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-blue-600 text-white hover:bg-blue-700"
+                            disabled={!formData.title || !formData.companyName || !formData.jobPosition || !formData.date || submitting}
+                            onClick={handleSaveEdit}
+                          >
+                            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "저장"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </CardContent>
+        </Card>
       </main>
 
-      {/* Add Schedule Modal */}
-      <Dialog open={isAddModalOpen} onOpenChange={(open) => {
-        setIsAddModalOpen(open)
-        if (!open) {
-          setSchedulingIntroId(null)
-          setScheduleInputDate("")
-          setScheduleInputTime("")
-          setEditingModalScheduleId(null)
-        }
-      }}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto border-border/50 bg-card sm:max-w-lg">
+      {/* Add / Manage Schedule Modal */}
+      <Dialog
+        open={isAddModalOpen}
+        onOpenChange={(open) => {
+          setIsAddModalOpen(open)
+          if (!open) {
+            setSchedulingIntroId(null)
+            setScheduleInputDate("")
+            setScheduleInputTime("")
+            setEditingModalScheduleId(null)
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-              <Plus className="h-5 w-5 text-primary" />
+            <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+              <Plus className="h-5 w-5 text-blue-600" />
               일정 관리
             </DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground">
-              일정이 미정인 자기소개서를 선택하거나 새 일정을 등록하세요.
+            <DialogDescription className="text-sm text-slate-400">
+              일정이 미정인 자기소개서를 선택하거나 기존 일정을 수정하세요.
             </DialogDescription>
           </DialogHeader>
 
-          {/* 탭 전환 */}
-          <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-secondary/30 p-1">
+          <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
             <button
-              onClick={() => {
-                setModalTab("unscheduled")
-                setSchedulingIntroId(null)
-              }}
+              onClick={() => { setModalTab("unscheduled"); setSchedulingIntroId(null) }}
               className={cn(
                 "rounded-lg py-2 text-sm font-medium transition-all",
                 modalTab === "unscheduled"
-                  ? "bg-primary text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-700"
               )}
             >
               일정 미정
             </button>
             <button
-              onClick={() => {
-                setModalTab("scheduled")
-                setEditingModalScheduleId(null)
-              }}
+              onClick={() => { setModalTab("scheduled"); setEditingModalScheduleId(null) }}
               className={cn(
                 "rounded-lg py-2 text-sm font-medium transition-all",
                 modalTab === "scheduled"
-                  ? "bg-primary text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-700"
               )}
             >
               일정 확정
             </button>
           </div>
 
-          {/* 탭 콘텐츠 */}
           {loadingModalData ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
             </div>
           ) : modalTab === "unscheduled" ? (
             <div className="mt-1 space-y-3">
               {unscheduledIntros.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <CalendarIcon className="mb-3 h-10 w-10 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">일정이 미정인 자기소개서가 없습니다</p>
+                  <CalendarIcon className="mb-3 h-10 w-10 text-slate-200" />
+                  <p className="text-sm text-slate-400">일정이 미정인 자기소개서가 없습니다</p>
                 </div>
               ) : (
                 unscheduledIntros.map((intro) => (
@@ -819,18 +807,18 @@ export default function SchedulePage() {
                     className={cn(
                       "rounded-xl border p-4 transition-all duration-200",
                       schedulingIntroId === intro.id
-                        ? "border-primary/40 bg-primary/5"
-                        : "border-border/50 bg-secondary/20 hover:bg-secondary/40"
+                        ? "border-blue-300 bg-blue-50"
+                        : "border-slate-200 bg-slate-50 hover:bg-white"
                     )}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate font-semibold text-foreground">{intro.companyName}</p>
-                        <p className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <p className="truncate font-semibold text-slate-900">{intro.companyName}</p>
+                        <p className="flex items-center gap-1 text-sm text-slate-500">
                           <Briefcase className="h-3.5 w-3.5 shrink-0" />
                           <span className="truncate">{intro.jobPosition}</span>
                           {intro.interviewStage && (
-                            <Badge variant="outline" className="ml-1 shrink-0 border-border/50 text-[10px]">
+                            <Badge variant="outline" className="ml-1 shrink-0 text-[10px]">
                               {intro.interviewStage}
                             </Badge>
                           )}
@@ -856,38 +844,32 @@ export default function SchedulePage() {
                     </div>
 
                     {schedulingIntroId === intro.id && (
-                      <div className="mt-3 space-y-3 rounded-lg border border-primary/30 bg-card p-3">
+                      <div className="mt-3 space-y-3 rounded-lg border border-blue-200 bg-white p-3">
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">날짜 *</Label>
+                            <Label className="text-xs text-slate-400">날짜 *</Label>
                             <Input
                               type="date"
                               value={scheduleInputDate}
                               onChange={(e) => setScheduleInputDate(e.target.value)}
-                              className="border-border/50 bg-secondary/30"
                             />
                           </div>
                           <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">시간</Label>
+                            <Label className="text-xs text-slate-400">시간</Label>
                             <Input
                               type="time"
                               value={scheduleInputTime}
                               onChange={(e) => setScheduleInputTime(e.target.value)}
-                              className="border-border/50 bg-secondary/30"
                             />
                           </div>
                         </div>
                         <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setSchedulingIntroId(null)}
-                          >
+                          <Button size="sm" variant="ghost" onClick={() => setSchedulingIntroId(null)}>
                             취소
                           </Button>
                           <Button
                             size="sm"
-                            className="bg-primary text-white hover:bg-primary/90"
+                            className="bg-blue-600 text-white hover:bg-blue-700"
                             disabled={!scheduleInputDate || modalSubmitting}
                             onClick={() => handleScheduleFromIntro(intro)}
                           >
@@ -904,8 +886,8 @@ export default function SchedulePage() {
             <div className="mt-1 space-y-3">
               {modalSchedules.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <CalendarIcon className="mb-3 h-10 w-10 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">등록된 일정이 없습니다</p>
+                  <CalendarIcon className="mb-3 h-10 w-10 text-slate-200" />
+                  <p className="text-sm text-slate-400">등록된 일정이 없습니다</p>
                 </div>
               ) : (
                 modalSchedules.map((schedule) => (
@@ -914,18 +896,18 @@ export default function SchedulePage() {
                     className={cn(
                       "rounded-xl border p-4 transition-all duration-200",
                       editingModalScheduleId === schedule.id
-                        ? "border-primary/40 bg-primary/5"
-                        : "border-border/50 bg-secondary/20 hover:bg-secondary/40"
+                        ? "border-blue-300 bg-blue-50"
+                        : "border-slate-200 bg-slate-50 hover:bg-white"
                     )}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate font-semibold text-foreground">{schedule.companyName}</p>
-                        <p className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <p className="truncate font-semibold text-slate-900">{schedule.companyName}</p>
+                        <p className="flex items-center gap-1 text-sm text-slate-500">
                           <Briefcase className="h-3.5 w-3.5 shrink-0" />
                           <span className="truncate">{schedule.jobPosition}</span>
                         </p>
-                        <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                        <p className="mt-1 flex items-center gap-1 text-xs text-slate-400">
                           <CalendarIcon className="h-3 w-3 shrink-0" />
                           {formatScheduleDate(schedule.interviewDate)}{" "}
                           {formatScheduleTime(schedule.interviewDate)}
@@ -949,38 +931,32 @@ export default function SchedulePage() {
                     </div>
 
                     {editingModalScheduleId === schedule.id && (
-                      <div className="mt-3 space-y-3 rounded-lg border border-primary/30 bg-card p-3">
+                      <div className="mt-3 space-y-3 rounded-lg border border-blue-200 bg-white p-3">
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">날짜 *</Label>
+                            <Label className="text-xs text-slate-400">날짜 *</Label>
                             <Input
                               type="date"
                               value={editModalForm.date}
-                              onChange={(e) => setEditModalForm(prev => ({ ...prev, date: e.target.value }))}
-                              className="border-border/50 bg-secondary/30"
+                              onChange={(e) => setEditModalForm((prev) => ({ ...prev, date: e.target.value }))}
                             />
                           </div>
                           <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">시간</Label>
+                            <Label className="text-xs text-slate-400">시간</Label>
                             <Input
                               type="time"
                               value={editModalForm.time}
-                              onChange={(e) => setEditModalForm(prev => ({ ...prev, time: e.target.value }))}
-                              className="border-border/50 bg-secondary/30"
+                              onChange={(e) => setEditModalForm((prev) => ({ ...prev, time: e.target.value }))}
                             />
                           </div>
                         </div>
                         <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setEditingModalScheduleId(null)}
-                          >
+                          <Button size="sm" variant="ghost" onClick={() => setEditingModalScheduleId(null)}>
                             취소
                           </Button>
                           <Button
                             size="sm"
-                            className="bg-primary text-white hover:bg-primary/90"
+                            className="bg-blue-600 text-white hover:bg-blue-700"
                             disabled={!editModalForm.date || modalSubmitting}
                             onClick={handleSaveModalEdit}
                           >
@@ -998,15 +974,25 @@ export default function SchedulePage() {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={deleteTargetId !== null} onOpenChange={(open) => { if (!open) setDeleteTargetId(null) }}>
-        <AlertDialogContent className="border-border bg-card">
+      <AlertDialog
+        open={deleteTargetId !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTargetId(null) }}
+      >
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>일정 삭제</AlertDialogTitle>
-            <AlertDialogDescription>이 일정을 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.</AlertDialogDescription>
+            <AlertDialogDescription>
+              이 일정을 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90" onClick={() => deleteTargetId && handleDelete(deleteTargetId)}>삭제</AlertDialogAction>
+            <AlertDialogAction
+              className="bg-rose-500 text-white hover:bg-rose-600"
+              onClick={() => deleteTargetId && handleDelete(deleteTargetId)}
+            >
+              삭제
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -186,20 +186,28 @@ export function useClipRecorder({
     }
     await stopPromiseRef.current
 
-    if (clipsRef.current.length === 0) return null
+    if (clipsRef.current.length === 0) {
+      console.warn("[clip-recorder] no clips recorded, skipping worst clip upload")
+      return null
+    }
 
     const worst = clipsRef.current.reduce((min, c) => c.score < min.score ? c : min)
     setIsUploading(true)
     try {
       const { uploadUrl, fileUrl } = await getPresignedUrlFnRef.current(sessionId, worst.questionId)
-      await fetch(uploadUrl, {
+      const res = await fetch(uploadUrl, {
         method: "PUT",
         body: worst.blob,
         headers: { "Content-Type": "video/webm" },
       })
+      if (!res.ok) {
+        console.error("[clip-recorder] S3 upload failed", res.status, await res.text().catch(() => ""))
+        return null
+      }
       clipsRef.current = []
       return { url: fileUrl, score: worst.score, questionId: worst.questionId, reason: worst.reason }
-    } catch {
+    } catch (err) {
+      console.error("[clip-recorder] worst clip upload error", err)
       return null
     } finally {
       setIsUploading(false)

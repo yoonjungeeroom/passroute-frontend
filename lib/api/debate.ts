@@ -19,16 +19,25 @@ export interface DebatePersona {
   difficulty: string
   strengths: string[]
   weaknesses: string[]
+  speakingVideoUrl?: string | null
+  silenceVideoUrl?: string | null
 }
 
 // FE↔BE wire 표기는 소문자. real = 실전(EXAM), practice = 연습.
 export type DebateMode = "practice" | "real"
+
+export interface PersonaVideo {
+  speakingVideoUrl?: string | null
+  silenceVideoUrl?: string | null
+}
 
 export interface DebateSessionCreateResponse {
   sessionId: number
   mode: DebateMode
   // 준비시간(초). real=60, practice=0. 백엔드가 항상 내려주지만 안전하게 폴백.
   prepSeconds?: number
+  moderator?: PersonaVideo | null
+  opponent?: PersonaVideo | null
 }
 
 export type SpeakerType = "USER" | "AI_COMPETITOR" | "AI_INTERVIEWER"
@@ -66,6 +75,8 @@ export interface DebateStateResponse {
   // finish만 오는 케이스는 실제로 없지만 availableChoices 기반 렌더라 와도 무해.)
   awaitingDecision?: boolean
   availableChoices?: DebateBranchChoice[]
+  moderator?: PersonaVideo | null
+  opponent?: PersonaVideo | null
 }
 
 export interface SuggestedTopicCandidate {
@@ -86,6 +97,7 @@ export interface SuggestTopicsResponse {
 export async function suggestDebateTopics(data: {
   keywords?: string[]
   count?: number
+  introId?: number
 }): Promise<SuggestTopicsResponse> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 120_000)
@@ -109,6 +121,7 @@ export async function generateDebateTopic(data: {
   title: string
   description?: string
   category: string
+  introId?: number
 }): Promise<DebateTopic> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 190_000)
@@ -146,6 +159,7 @@ export async function createDebateSession(data: {
   personaId: number
   difficulty: "EASY" | "NORMAL" | "HARD"
   mode: DebateMode // 백엔드 @NotNull — 누락 시 400
+  introId?: number
 }): Promise<DebateSessionCreateResponse> {
   return apiFetch<DebateSessionCreateResponse>(
     "/debate/sessions",

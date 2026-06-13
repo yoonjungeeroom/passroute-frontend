@@ -24,9 +24,15 @@ export interface InterviewRoomResponse {
   roomId: number
 }
 
+export interface PersonaVideo {
+  speakingVideoUrl?: string | null
+  silenceVideoUrl?: string | null
+}
+
 export interface InterviewStartResponse {
   sessionId: number
   questions: SessionQuestion[]
+  interviewer?: PersonaVideo | null
 }
 
 export interface SessionQuestion {
