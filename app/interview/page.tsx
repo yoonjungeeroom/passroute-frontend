@@ -65,56 +65,51 @@ function CountdownScreen({ onComplete }: { onComplete: () => void }) {
   const offset = CIRCUMFERENCE * (1 - filled)
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-[#F8F7F3]">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-white">
       {/* Status pill */}
-      <div className="mb-8 flex items-center gap-2 rounded-full border border-[#E8E3DC] bg-white px-4 py-2 text-xs font-medium text-[#66788E]">
+      <div className="mb-8 flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-600">
         <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-300 opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-600" />
         </span>
         카메라 · 마이크 활성화됨
       </div>
 
       {/* Heading */}
-      <p className="mb-8 text-[15px] font-medium text-[#9A9389]">면접이 곧 시작됩니다</p>
+      <p className="mb-8 text-[15px] font-medium text-slate-500">면접이 곧 시작됩니다</p>
 
       {/* Ring */}
-      <div className="relative mb-8 h-40 w-40">
+      <div className="relative mb-8 h-44 w-44">
         <svg
           viewBox="0 0 160 160"
           className="absolute inset-0 h-full w-full -rotate-90"
         >
+          <circle cx="80" cy="80" r="70" fill="none" stroke="#dbeafe" strokeWidth="5" />
           <circle
             cx="80" cy="80" r="70"
             fill="none"
-            stroke="#E8E3DC"
-            strokeWidth="3"
-          />
-          <circle
-            cx="80" cy="80" r="70"
-            fill="none"
-            stroke="#66788E"
-            strokeWidth="3"
+            stroke="#2563eb"
+            strokeWidth="5"
             strokeLinecap="round"
             strokeDasharray={CIRCUMFERENCE}
             strokeDashoffset={offset}
             style={{ transition: "stroke-dashoffset 0.8s ease" }}
           />
         </svg>
-        <div className="absolute left-1/2 top-1/2 flex h-[124px] w-[124px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full bg-white shadow-sm">
+        <div className="absolute left-1/2 top-1/2 flex h-[124px] w-[124px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full bg-white shadow-[0_2px_12px_rgba(37,99,235,0.12)]">
           <span
             key={count}
-            className="text-[56px] font-bold leading-none tracking-tight text-[#3E3630] animate-in zoom-in-75 duration-300"
+            className="text-[56px] font-bold leading-none tracking-tight text-slate-900 animate-in zoom-in-75 duration-300"
             style={{ fontFamily: "'SpaceGrotesk', sans-serif" }}
           >
             {count}
           </span>
-          <span className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-[#B1BCC9]">sec</span>
+          <span className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-blue-300">sec</span>
         </div>
       </div>
 
       {/* Footer */}
-      <p className="flex items-center gap-2 text-[13px] text-[#B1BCC9]">
+      <p className="flex items-center gap-2 text-[13px] text-slate-400">
         <Clock size={13} />
         잠시 후 자동으로 시작됩니다
       </p>

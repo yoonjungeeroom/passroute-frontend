@@ -862,42 +862,74 @@ function DebatePageInner() {
     const mm = String(Math.floor(prepRemaining / 60)).padStart(2, "0")
     const ss = String(prepRemaining % 60).padStart(2, "0")
     const progress = prepSeconds > 0 ? prepRemaining / prepSeconds : 0
+    const CIRCUMFERENCE = 2 * Math.PI * 70
+    const offset = CIRCUMFERENCE * (1 - progress)
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6">
-        <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
-          <Badge variant="outline" className="gap-1.5 border-rose-500/30 bg-rose-500/10 text-rose-400">
-            <Clock className="h-3.5 w-3.5" />
+      <div className="flex min-h-screen flex-col items-center justify-center bg-white p-6">
+        <div className="flex w-full max-w-sm flex-col items-center gap-0 text-center">
+
+          {/* Status pill */}
+          <div className="mb-7 flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-600">
+            <Clock className="h-3 w-3" />
             실전 모드 · 준비 시간
-          </Badge>
-          <div>
-            <p className="text-sm text-muted-foreground">주제</p>
-            <h1 className="mt-1 text-lg font-semibold text-foreground">{selectedTopic?.title ?? topicTitleParam}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              내 입장: {selectedStance === "PRO" ? "찬성" : "반대"}
-            </p>
           </div>
-          {/* 카운트다운 */}
-          <div className="relative flex h-44 w-44 items-center justify-center">
-            <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="45" fill="none" strokeWidth="6" className="stroke-secondary" />
+
+          {/* Topic info */}
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-400">주제</p>
+          <h1 className="mb-2 text-[17px] font-bold leading-snug text-slate-900">
+            {selectedTopic?.title ?? topicTitleParam}
+          </h1>
+          <p className="mb-7 whitespace-nowrap text-[13px] text-slate-500">
+            내 입장:{" "}
+            <span className="font-semibold text-blue-600">
+              {selectedStance === "PRO" ? "찬성" : "반대"}
+            </span>
+          </p>
+
+          {/* Ring */}
+          <div className="relative mb-8 h-44 w-44">
+            <svg
+              viewBox="0 0 160 160"
+              className="absolute inset-0 h-full w-full -rotate-90"
+            >
+              <circle cx="80" cy="80" r="70" fill="none" stroke="#dbeafe" strokeWidth="5" />
               <circle
-                cx="50" cy="50" r="45" fill="none" strokeWidth="6" strokeLinecap="round"
-                className="stroke-primary transition-[stroke-dashoffset] duration-1000 ease-linear"
-                strokeDasharray={2 * Math.PI * 45}
-                strokeDashoffset={2 * Math.PI * 45 * (1 - progress)}
+                cx="80" cy="80" r="70"
+                fill="none"
+                stroke="#2563eb"
+                strokeWidth="5"
+                strokeLinecap="round"
+                strokeDasharray={CIRCUMFERENCE}
+                strokeDashoffset={offset}
+                style={{ transition: "stroke-dashoffset 1s linear" }}
               />
             </svg>
-            <span className="text-4xl font-bold tabular-nums text-foreground">{mm}:{ss}</span>
+            <div className="absolute left-1/2 top-1/2 flex h-[124px] w-[124px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full bg-white shadow-[0_2px_12px_rgba(37,99,235,0.12)]">
+              <span
+                className="text-[36px] font-bold tabular-nums leading-none tracking-tight text-slate-900"
+                style={{ fontFamily: "'SpaceGrotesk', sans-serif" }}
+              >
+                {mm}:{ss}
+              </span>
+              <span className="mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-blue-300">준비 중</span>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
+
+          {/* Description */}
+          <p className="mb-8 text-[13px] leading-relaxed text-slate-400">
             준비 시간 동안 논리를 정리하세요.<br />
             시간이 끝나면 자동으로 토론이 시작됩니다.
           </p>
-          {/* 준비시간 건너뛰기 — 카운트다운을 0으로 만들어 기존 시작 로직(useEffect)을 즉시 트리거 */}
-          <Button onClick={() => setPrepRemaining(0)} className="gap-1.5">
+
+          {/* Skip button */}
+          <button
+            onClick={() => setPrepRemaining(0)}
+            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-6 py-3 text-[13px] font-semibold text-blue-600 transition-colors hover:border-blue-100 hover:bg-blue-50"
+          >
             건너뛰고 바로 시작
             <ArrowRight className="h-4 w-4" />
-          </Button>
+          </button>
+
         </div>
       </div>
     )
