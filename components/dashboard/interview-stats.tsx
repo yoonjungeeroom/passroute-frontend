@@ -227,7 +227,7 @@ export function InterviewStats() {
       setLoading(false)
       return
     }
-    getReportList({ page: 0, size: 200 })
+    getReportList({ type: "all", page: 0, size: 200 })
       .then((res) => setStats(computeStats(res.items)))
       .catch(() => setStats(computeStats([])))
       .finally(() => setLoading(false))
