@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { TrendingUp, Target, Zap, Trophy, Flame, Loader2 } from "lucide-react"
+import { TrendingUp, TrendingDown, Target, Zap, Trophy, Flame, Loader2 } from "lucide-react"
 import { getReportList, type ReportListItem } from "@/lib/api/reports"
 
 const BLUE = "#2563eb"
@@ -161,7 +161,7 @@ function ScoreTrend({ trend, loading }: { trend: number[]; loading: boolean }) {
                     : "bg-rose-50 text-rose-500")
                 }
               >
-                <TrendingUp size={12} strokeWidth={2.6} />
+                {delta >= 0 ? <TrendingUp size={12} strokeWidth={2.6} /> : <TrendingDown size={12} strokeWidth={2.6} />}
                 {delta >= 0 ? "+" : ""}{delta.toFixed(1)}
               </span>
             )}
