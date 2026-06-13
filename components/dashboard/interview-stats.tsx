@@ -87,7 +87,7 @@ function computeStats(items: ReportListItem[]): Stats {
 
   const scored = sorted.filter((r) => r.totalScore > 0)
   const avg = scored.length > 0
-    ? Math.round(scored.reduce((s, r) => s + r.totalScore, 0) / scored.length)
+    ? parseFloat((scored.reduce((s, r) => s + r.totalScore, 0) / scored.length).toFixed(1))
     : 0
 
   // 최근 7개 점수 trend
@@ -227,7 +227,7 @@ export function InterviewStats() {
       setLoading(false)
       return
     }
-    getReportList({ page: 0, size: 100 })
+    getReportList({ page: 0, size: 200 })
       .then((res) => setStats(computeStats(res.items)))
       .catch(() => setStats(computeStats([])))
       .finally(() => setLoading(false))
@@ -257,7 +257,7 @@ export function InterviewStats() {
         <StatCard
           icon={Target}
           label="평균 점수"
-          value={loading ? "—" : s.avg || "--"}
+          value={loading ? "—" : s.avg ? s.avg.toFixed(1) : "--"}
           unit={s.avg ? "점" : ""}
           spark={s.sparkAvg}
         />
