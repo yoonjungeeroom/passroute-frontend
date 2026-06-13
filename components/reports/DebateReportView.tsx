@@ -7,12 +7,23 @@ import { faStar, faArrowTrendUp, faLightbulb } from "@fortawesome/free-solid-svg
 import { localizeRounds } from "@/lib/debate-rounds"
 import type { DebateReportResponse } from "@/types/report"
 
+const CLIP_REASON_LABELS: Record<string, string> = {
+  pace: "말하기 속도가 적절하지 않았던 구간이에요",
+  silence: "침묵이 길었던 구간이에요",
+  filler: "추임새가 많았던 구간이에요",
+  gaze: "시선 처리가 아쉬웠던 구간이에요",
+}
+
 export function DebateReportView({
   report,
+  worstClipUrl,
+  worstClipReason,
   onReplay,
   onDetail,
 }: {
   report: DebateReportResponse
+  worstClipUrl?: string | null
+  worstClipReason?: string | null
   onReplay?: () => void
   onDetail?: () => void
   /** 목록 토글에서 핵심만 간략히 노출 (라운드별 피드백/상세 섹션은 상세 페이지의 DebateReportDetail에서) */
@@ -46,6 +57,17 @@ export function DebateReportView({
           <p className="text-sm text-muted-foreground">{localizeRounds(report.improvements)}</p>
         </div>
       </div>
+
+      {/* 최악 클립 */}
+      {worstClipUrl && (
+        <div className="rounded-xl border border-border/50 p-4">
+          <h4 className="mb-2 text-sm font-semibold text-foreground">개선 필요 구간</h4>
+          {worstClipReason && CLIP_REASON_LABELS[worstClipReason] && (
+            <p className="mb-2 text-sm text-muted-foreground">{CLIP_REASON_LABELS[worstClipReason]}</p>
+          )}
+          <video src={worstClipUrl} controls className="w-full rounded-lg" />
+        </div>
+      )}
 
       {/* 액션 */}
       {(onReplay || onDetail) && (

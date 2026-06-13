@@ -2,12 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Sidebar } from "@/components/dashboard/sidebar"
-import { MobileHeader } from "@/components/dashboard/mobile-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
-  ChevronLeft,
   Loader2,
   Send,
   Trophy,
@@ -19,9 +16,12 @@ import {
   User,
   Clock,
   Lock,
+  Video,
+  X,
 } from "lucide-react"
 import { PreCheckScreen } from "@/components/pre-check-screen"
 import { cn } from "@/lib/utils"
+import { ROUND_LABEL } from "@/lib/debate-rounds"
 import { useFaceAnalysis } from "@/hooks/use-face-analysis"
 
 interface DeviceStatus {
@@ -39,6 +39,8 @@ import {
   submitDebateTurn,
   submitDebateBranch,
   endDebateSession,
+  getDebatePresignedUrl,
+  saveDebateWorstClip,
   type DebateTopic,
   type DebatePersona,
   type DebateStateResponse,
@@ -49,6 +51,7 @@ import {
 } from "@/lib/api/debate"
 import { ApiError } from "@/lib/api/client"
 import { useDebateSTT } from "@/hooks/use-debate-stt"
+import { useClipRecorder } from "@/hooks/use-clip-recorder"
 
 const STATE_TO_ROUND: Record<string, DebateRound> = {
   OPENING_USER: "OPENING",
@@ -57,13 +60,9 @@ const STATE_TO_ROUND: Record<string, DebateRound> = {
   CLOSING_USER: "CLOSING",
 }
 
-const roundLabel: Record<DebateRound, string> = {
-  OPENING: "개회",
-  REBUTTAL_1: "반론1",
-  REBUTTAL_2: "반론2",
-  CLOSING: "마무리",
-  MODERATION: "사회",
-}
+// 실전모드 한 턴 제한시간(초). 연습모드엔 적용하지 않는다.
+const EXAM_TURN_LIMIT_SEC = 120
+
 
 type Phase = "precheck" | "prep" | "debating" | "ending"
 
@@ -81,12 +80,12 @@ type StreamingReveal = { key: string; sentences: string[]; visibleCount: number 
 
 function AnalysisPanel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col rounded-xl border border-border bg-card">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+    <div className="flex flex-col rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+        <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+        <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">{title}</h3>
       </div>
-      <div className="flex-1 p-3">{children}</div>
+      <div className="flex-1 p-4">{children}</div>
     </div>
   )
 }
@@ -97,6 +96,7 @@ function DebatePageInner() {
   const topicIdParam = searchParams?.get("topicId")
   const stanceParam = searchParams?.get("stance") as "PRO" | "CON" | null
   const personaIdParam = searchParams?.get("personaId")
+  const introIdParam = searchParams?.get("introId")
   const difficultyParam = searchParams?.get("difficulty") as "EASY" | "NORMAL" | "HARD" | null
   const topicTitleParam = searchParams?.get("topicTitle") // 생성 주제는 정적 목록에 없어 배너 제목 폴백용
   // 연습/실전 모드. modal이 "practice" | "real"로 전달 (real = 실전/EXAM). 누락 시 연습으로 간주.
@@ -106,6 +106,7 @@ function DebatePageInner() {
   // 쿼리스트링을 한 번만 안전하게 파싱 (누락/비숫자는 NaN, 잘못된 stance는 false)
   const topicId = topicIdParam ? Number(topicIdParam) : NaN
   const personaId = personaIdParam ? Number(personaIdParam) : NaN
+  const introId = introIdParam ? Number(introIdParam) : NaN
   const isValidStance = stanceParam === "PRO" || stanceParam === "CON"
 
   // Pre-check state
@@ -184,6 +185,19 @@ function DebatePageInner() {
     active: recording && sessionId !== null,
   })
 
+  // 클립 레코더 — 토론 세션 전체를 하나의 구간으로 녹화해 최악 구간 클립을 리포트에 첨부
+  const { uploadWorstClip } = useClipRecorder({
+    stream: mediaStream,
+    active: phase === "debating" && !!sessionId,
+    questionId: 0,
+    wpm: sttWpm,
+    silenceSec: sttSilenceSec,
+    fillerCount: sttFillerCount,
+    gazeRatio,
+    gazeOffCount,
+    getPresignedUrlFn: getDebatePresignedUrl,
+  })
+
   // 면접관 최신 멘트 — 공개된 AI_INTERVIEWER 턴만 대상(상단 배너용). latestTurns는 오래된→최신 순.
   const latestInterviewerTurn = debateState?.latestTurns
     ? [...debateState.latestTurns].reverse().find(t => t.speakerType === "AI_INTERVIEWER" && revealedTurnIds.has(t.id))
@@ -194,8 +208,49 @@ function DebatePageInner() {
   const competitorSpeaking =
     revealingSpeaker === "AI_COMPETITOR" ||
     (polling && !debateState?.waitingForUser && !revealing)
-  // 내 발언 미확정 버블 표시 — 말하는 중(라이브)이거나, 중지 후 확정/평가 대기 동안 그대로 유지(사라지지 않게).
-  const showPendingBubble = recording || (isPractice && (sttReady || awaitingEval || !!feedbackTurn))
+  // 내 발언 미확정 버블 표시 — 말하는 중(라이브)이거나, 녹음 완료 후(sttReady) 제출 전까지 그대로 유지.
+  // sttReady를 양 모드 공통으로 두어, 실전모드도 "녹음 완료"가 아니라 "제출" 시점에 사라진다(제출 시 setSttReady(false)).
+  const showPendingBubble = recording || sttReady || (isPractice && (awaitingEval || !!feedbackTurn))
+
+  // 실전모드 한 턴 제한시간(초). 시간 종료 시 입력만 잠그고(녹음 중지·버튼 비활성), 제출은 사용자가 직접 누른다.
+  const [turnTimeLeft, setTurnTimeLeft] = useState(EXAM_TURN_LIMIT_SEC)
+  // 타이머는 "녹음 시작"을 처음 누른 시점부터 작동(생각하는 동안엔 흐르지 않게). 턴이 바뀌면 다시 false.
+  const [turnTimerStarted, setTurnTimerStarted] = useState(false)
+  // 사용자 입력 가능 구간(내 턴이면서 공개 큐 비워진 상태)
+  const userTurnActive = phase === "debating" && !!debateState?.waitingForUser && !revealing
+  const turnTimeUp = isExam && turnTimerStarted && turnTimeLeft <= 0
+
+  // 라운드 stepper 단계 — 분기 선택에 따라 동적. "토론 마무리하기"(반박2 건너뜀)를 고르면 반박2 칸이 빠져 3단계.
+  // 반박2를 거쳤거나(턴 존재) 아직 마무리에 도달하지 않았으면(분기 전·한 번 더 반박) 4단계로 노출.
+  const didRebuttal2 = !!debateState?.latestTurns?.some((t) => t.round === "REBUTTAL_2")
+  const atOrPastClosing = currentRound === "CLOSING" || phase === "ending"
+  const debateSteps = (didRebuttal2 || !atOrPastClosing
+    ? ["OPENING", "REBUTTAL_1", "REBUTTAL_2", "CLOSING"]
+    : ["OPENING", "REBUTTAL_1", "CLOSING"]) as DebateRound[]
+
+  // 실전모드: 새 사용자 턴이 시작되면(라운드 변경) 제한시간·타이머시작 플래그 리셋
+  useEffect(() => {
+    if (!isExam) return
+    setTurnTimeLeft(EXAM_TURN_LIMIT_SEC)
+    setTurnTimerStarted(false)
+  }, [isExam, currentRound])
+
+  // "녹음 시작"을 누르면 타이머 작동 시작(한 번 시작되면 그 턴 동안 유지 — 중지/재녹음해도 계속 흐름)
+  useEffect(() => {
+    if (isExam && recording) setTurnTimerStarted(true)
+  }, [isExam, recording])
+
+  // 실전모드: 타이머 시작 후 내 턴 구간에서 1초씩 카운트다운 (AI 발언/대기 중엔 멈춤)
+  useEffect(() => {
+    if (!isExam || !turnTimerStarted || !userTurnActive || turnTimeLeft <= 0) return
+    const t = setTimeout(() => setTurnTimeLeft((s) => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [isExam, turnTimerStarted, userTurnActive, turnTimeLeft])
+
+  // 시간 종료 시 녹음 강제 중지(입력 잠금). 제출은 사용자가 직접 누르게 둔다.
+  useEffect(() => {
+    if (turnTimeUp && recording) setRecording(false)
+  }, [turnTimeUp, recording])
 
   // 쿼리스트링 누락/오류 시 대시보드로 (모달을 거치지 않은 직접 접근)
   useEffect(() => {
@@ -429,6 +484,7 @@ function DebatePageInner() {
         personaId,
         difficulty: selectedDifficulty,
         mode: isExam ? "real" : "practice",
+        ...(isNaN(introId) ? {} : { introId }),
       })
       setSessionId(res.sessionId)
       if (isExam) {
@@ -690,12 +746,22 @@ function DebatePageInner() {
     }
   }
 
+  const handleExitEarly = () => {
+    router.push("/dashboard")
+  }
+
   const handleEnd = async () => {
     if (!sessionId) return
     try {
       await endDebateSession(sessionId)
     } catch {
       // end 실패해도 리포트는 생성됐을 수 있음
+    }
+    try {
+      const clip = await uploadWorstClip(sessionId)
+      if (clip) await saveDebateWorstClip(sessionId, clip.url, clip.score, clip.questionId, clip.reason)
+    } catch {
+      // 클립 업로드 실패는 무시 — 리포트는 정상 진행
     }
     router.push(`/reports/debate/${sessionId}`)
   }
@@ -774,408 +840,363 @@ function DebatePageInner() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Sidebar />
-      <MobileHeader />
+    <div className="flex h-screen flex-col bg-slate-50 overflow-hidden">
+      {/* Top bar */}
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-sm bg-blue-600" />
+            <span className="text-[15px] font-bold tracking-tight text-slate-900">passroute</span>
+          </div>
+          <div className="h-4 w-px bg-slate-200" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold text-slate-900">{selectedTopic?.title ?? topicTitleParam}</p>
+            <p className="text-xs text-slate-500">
+              내 입장: {selectedStance === "PRO" ? "찬성" : "반대"} · 난이도: {difficultyLabel[selectedDifficulty]}
+            </p>
+          </div>
+        </div>
+        {phase === "debating" && (
+          <button
+            onClick={handleExitEarly}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-rose-500 transition-colors hover:bg-rose-50"
+          >
+            <X className="h-4 w-4" />
+            종료
+          </button>
+        )}
+      </header>
 
-      <main className="pt-14 lg:pl-64 lg:pt-0">
-        <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8">
-          {/* Header */}
-          <div className="mb-6 flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push("/dashboard")}
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-xl font-bold text-foreground">토론 면접</h1>
-              <p className="text-sm text-muted-foreground">
-                {phase === "debating" && "토론 진행 중"}
-                {phase === "ending" && "토론 종료"}
-              </p>
+      {/* Round stepper */}
+      <div className="flex h-11 shrink-0 items-center justify-center gap-2 border-b border-slate-200 bg-white">
+        {debateSteps.map((r, i, arr) => {
+          const curIdx = currentRound ? arr.indexOf(currentRound) : -1
+          const active = r === currentRound && phase === "debating"
+          const done = curIdx > i || phase === "ending"
+          return (
+            <div key={r} className="flex items-center gap-2">
+              {i > 0 && <span className="h-px w-5 bg-slate-200" />}
+              <span className={cn("flex items-center gap-1.5 text-xs font-semibold", active ? "text-slate-900" : done ? "text-emerald-600" : "text-slate-400")}>
+                <span className={cn("flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold", active ? "bg-blue-600 text-white" : done ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400")}>
+                  {i + 1}
+                </span>
+                {ROUND_LABEL[r]}
+              </span>
             </div>
+          )
+        })}
+      </div>
+
+      {(phase === "debating" || phase === "ending") && (
+        <main className="flex min-h-0 flex-1 gap-3 p-3">
+          {/* Left: 참가자 스트립 (사회자 / 상대 / 나) */}
+          <div className="flex w-60 shrink-0 flex-col gap-3">
+            {/* 사회자 — 아바타 영상 자리 */}
+            <div className={cn(
+              "relative overflow-hidden rounded-lg border shadow-sm transition-all",
+              isPractice ? "flex-1 bg-white" : "aspect-[4/3] w-full shrink-0 bg-slate-100",
+              revealingSpeaker === "AI_INTERVIEWER" ? "border-blue-500 ring-2 ring-blue-500/20" : (isPractice ? "border-slate-200" : "border-slate-300")
+            )}>
+              <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
+              <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
+                <Video className="h-6 w-6 opacity-70" />
+                <span className="font-mono text-[10px]">아바타 영상 자리</span>
+              </div>
+              {revealingSpeaker === "AI_INTERVIEWER" && (
+                <div className="absolute left-0 right-0 top-3 flex items-end justify-center gap-[3px]">
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <span key={i} className="w-[3px] rounded-full bg-blue-600" style={{ height: 14, animation: "waveBar 0.9s ease-in-out infinite", animationDelay: `${i * 70}ms` }} />
+                  ))}
+                </div>
+              )}
+              <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-white/85 px-2 py-1 whitespace-nowrap text-[11px] font-semibold text-slate-700 backdrop-blur-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />사회자
+              </div>
+            </div>
+
+            {/* 상대 토론자 — 아바타 영상 자리 */}
+            <div className={cn(
+              "relative overflow-hidden rounded-lg border shadow-sm transition-all",
+              isPractice ? "flex-1 bg-white" : "aspect-[4/3] w-full shrink-0 bg-slate-100",
+              competitorSpeaking ? "border-blue-500 ring-2 ring-blue-500/20" : (isPractice ? "border-slate-200" : "border-slate-300")
+            )}>
+              <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 11px, rgba(100,116,139,0.07) 11px 22px)" }} />
+              <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
+                <Video className="h-6 w-6 opacity-70" />
+                <span className="font-mono text-[10px]">아바타 영상 자리</span>
+              </div>
+              {competitorSpeaking && (
+                <div className="absolute left-0 right-0 top-3 flex items-end justify-center gap-[3px]">
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <span key={i} className="w-[3px] rounded-full bg-blue-600" style={{ height: 14, animation: "waveBar 0.9s ease-in-out infinite", animationDelay: `${i * 70}ms` }} />
+                  ))}
+                </div>
+              )}
+              <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-white/85 px-2 py-1 whitespace-nowrap text-[11px] font-semibold text-slate-700 backdrop-blur-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />{selectedPersona?.name ?? "AI 경쟁자"} · {selectedStance === "PRO" ? "반대" : "찬성"}
+              </div>
+              {competitorSpeaking && (
+                <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-slate-900/55 px-2 py-0.5 backdrop-blur-sm">
+                  <Loader2 className="h-2.5 w-2.5 animate-spin text-white" />
+                  <span className="text-[10px] font-medium text-white">발언 중</span>
+                </div>
+              )}
+            </div>
+
+            {/* 나 (연습 모드 — 실전은 중앙 메인으로 이동) */}
+            {isPractice && (
+              <div className={cn(
+                "relative flex-1 overflow-hidden rounded-lg border bg-slate-100 shadow-sm transition-all",
+                recording ? "border-rose-400 ring-2 ring-rose-400/20" : "border-slate-200"
+              )}>
+                {mediaStream ? (
+                  <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" />
+                ) : (
+                  <div className="flex h-full items-center justify-center"><User className="h-9 w-9 text-slate-300" /></div>
+                )}
+                {recording && (
+                  <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-rose-500 px-2 py-0.5">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                    <span className="text-[10px] font-bold text-white">REC</span>
+                  </div>
+                )}
+                <div className="absolute bottom-2 left-2 rounded-md bg-slate-900/55 whitespace-nowrap px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur-sm">나 · {selectedStance === "PRO" ? "찬성" : "반대"}</div>
+              </div>
+            )}
           </div>
 
-          {phase === "debating" || phase === "ending" ? (
-            <div className="flex gap-3" style={{ height: "calc(100dvh - 160px)" }}>
-            <div className="flex flex-1 flex-col min-w-0">
-              {/* Topic Banner */}
-              <div className="mb-3 rounded-lg border border-border/50 bg-card px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{selectedTopic?.title ?? topicTitleParam}</p>
-                    <p className="text-xs text-muted-foreground">
-                      내 입장: {selectedStance === "PRO" ? "찬성" : "반대"} · 난이도: {difficultyLabel[selectedDifficulty]}
-                    </p>
-                  </div>
-                  {phase === "debating" && (
-                    <Button variant="outline" size="sm" onClick={handleEnd} className="shrink-0">
-                      토론 종료
-                    </Button>
-                  )}
+          {/* Center: 사회자 멘트 + 발언 기록(연습) / 내 카메라(실전) + 컨트롤 */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
+            {latestInterviewerTurn && (
+              <div className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600">사회자</span>
+                  <span className="rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold text-amber-600">{ROUND_LABEL[latestInterviewerTurn.round] ?? latestInterviewerTurn.round}</span>
                 </div>
+                <p className="text-sm leading-relaxed text-slate-900">{latestInterviewerTurn.content}</p>
               </div>
+            )}
 
-              {/* Video Section — AI 경쟁자 (왼쪽) / 내 카메라 (오른쪽) */}
-              {/* 면접관(사회자) 멘트 — 상단 배너 */}
-              {latestInterviewerTurn && (
-                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-900/20">
-                  <div className="mb-1.5 flex items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">면접관</span>
-                    <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600">{roundLabel[latestInterviewerTurn.round] ?? latestInterviewerTurn.round}</Badge>
-                  </div>
-                  <p className="text-sm leading-relaxed text-foreground">{latestInterviewerTurn.content}</p>
-                </div>
-              )}
+{isPractice ? (
+  <div ref={chatScrollRef} className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    {chatTurns.length === 0 && !showPendingBubble ? (
+      <p className="m-auto text-xs text-slate-400">아직 발언이 없습니다</p>
+    ) : (
+      chatTurns.map((m) => {
+        const isMe = m.speaker === "USER"
+        const reveal = streamingReveal?.key === m.key ? streamingReveal : null
+        const displayContent = reveal ? reveal.sentences.slice(0, reveal.visibleCount).join("") : m.content
+        return (
+          <div key={m.key} className={cn("flex", isMe ? "justify-end" : "justify-start")}>
+            <div className="flex max-w-[82%] flex-col gap-1">
+              <span className={cn("text-[10px] font-medium text-slate-400", isMe ? "text-right" : "text-left")}>{isMe ? "나" : (selectedPersona?.name ?? "AI 경쟁자")}</span>
+              <div className={cn("rounded-xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap", isMe ? "rounded-br-sm bg-blue-600 text-white" : "rounded-bl-sm border border-slate-200 bg-slate-50 text-slate-900")}>
+                {displayContent}
 
-              {/* 화자 카드 — 상대(왼쪽) / 나(오른쪽). 말하는 쪽에 보더 글로우 */}
-              <div className="mb-2 grid grid-cols-2 gap-2 sm:gap-3">
-                {/* AI 경쟁자 */}
-                <div className={cn(
-                  "relative flex h-28 flex-col items-center justify-center gap-1.5 rounded-xl border bg-secondary/30 transition-all sm:h-36",
-                  competitorSpeaking ? "border-primary/60 ring-2 ring-primary/20" : "border-border/50"
-                )}>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary border border-border/50 text-base font-bold text-foreground sm:h-14 sm:w-14 sm:text-lg">
-                    {selectedPersona?.name?.slice(0, 1) ?? "A"}
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs font-semibold text-foreground">{selectedPersona?.name ?? "AI 경쟁자"}</p>
-                    <p className="text-[10px] text-muted-foreground">{selectedStance === "PRO" ? "반대" : "찬성"}</p>
-                  </div>
-                  {competitorSpeaking && (
-                    <div className="absolute bottom-2 left-0 right-0 flex justify-center">
-                      <div className="flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5">
-                        <Loader2 className="h-2.5 w-2.5 animate-spin text-muted-foreground" />
-                        <span className="text-[10px] text-muted-foreground">발언 중</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 내 카메라 */}
-                <div className={cn(
-                  "relative h-28 overflow-hidden rounded-xl border bg-secondary/30 transition-all sm:h-36",
-                  recording ? "border-rose-500/70 ring-2 ring-rose-500/20" : "border-border/50"
-                )}>
-                  {mediaStream ? (
-                    <>
-                      <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" />
-                      <div className="absolute bottom-2 left-2 rounded-full bg-background/80 px-2 py-0.5">
-                        <p className="text-[10px] font-medium text-foreground">나 · {selectedStance === "PRO" ? "찬성" : "반대"}</p>
-                      </div>
-                      {recording && (
-                        <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-rose-500/90 px-2 py-0.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                          <span className="text-[10px] font-medium text-white">REC</span>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="flex h-full flex-col items-center justify-center gap-2">
-                      <User className="h-8 w-8 text-muted-foreground/40" />
-                      <p className="text-[10px] text-muted-foreground">카메라 없음</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* 음성 건너뛰기 — 면접관 오프닝/상대 발언 TTS를 끝까지 듣지 않고 진행. 텍스트는 그대로 유지된다. */}
-              {revealing && (
-                <div className="mb-2 flex justify-center">
-                  <Button variant="outline" size="sm" onClick={handleSkipAudio} className="gap-1.5 text-muted-foreground">
-                    <SkipForward className="h-3.5 w-3.5" />
-                    음성 건너뛰기
-                  </Button>
-                </div>
-              )}
-
-              {/* 발언 채팅 로그 — 공개된 상대/내 발언이 카톡식으로 아래로 쌓인다(상대 왼쪽·내 발언 오른쪽).
-                  면접관은 상단 배너에만. 실전 모드는 잠금(내용은 종료 후 리포트). */}
-              <div ref={chatScrollRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-xl border border-border/50 bg-card p-3">
-                {isPractice ? (
-                  chatTurns.length === 0 && !showPendingBubble ? (
-                    <p className="text-xs text-muted-foreground">아직 발언이 없습니다</p>
-                  ) : (
-                    chatTurns.map((m) => {
-                      const isMe = m.speaker === "USER"
-                      // 점진 노출 중인 상대 발언이면 TTS 진행률만큼만 잘라 보여주고, 그 외엔 전체 content를 그대로 표시.
-                      const reveal = streamingReveal?.key === m.key ? streamingReveal : null
-                      const displayContent = reveal ? reveal.sentences.slice(0, reveal.visibleCount).join("") : m.content
-                      return (
-                        <div key={m.key} className={cn("flex", isMe ? "justify-end" : "justify-start")}>
-                          <div className="flex max-w-[80%] flex-col gap-0.5">
-                            <span className={cn("text-[10px] text-muted-foreground", isMe ? "text-right" : "text-left")}>
-                              {isMe ? "나" : (selectedPersona?.name ?? "AI 경쟁자")}
-                            </span>
-                            <div className={cn(
-                              "rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap",
-                              isMe
-                                ? "rounded-br-sm bg-primary text-primary-foreground"
-                                : "rounded-bl-sm bg-secondary text-foreground"
-                            )}>
-                              {displayContent}
-                            </div>
                           </div>
                         </div>
-                      )
-                    })
-                  )
-                ) : !showPendingBubble ? (
-                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Lock className="h-3 w-3 shrink-0" /> 실전 모드 · 발언은 종료 후 리포트에서
-                  </p>
-                ) : null}
-
-                {/* 내 미확정 발언 — 말하는 중(라이브)이거나 중지 후 확정/평가 대기 동안 그대로 유지(오른쪽, 옅은 색).
-                    "확정" 시 위 chatTurns에 정식 버블로 한 번만 합류하므로 중복되지 않는다. */}
+                      </div>
+                    )
+                  })
+                )}
                 {showPendingBubble && (
                   <div className="flex justify-end">
-                    <div className="flex max-w-[80%] flex-col gap-0.5">
-                      <span className="text-right text-[10px] text-muted-foreground">{recording ? "나 · 입력 중" : "나"}</span>
-                      <div className="rounded-2xl rounded-br-sm bg-primary/60 px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">
+                    <div className="flex max-w-[82%] flex-col gap-1">
+                      <span className="text-right text-[10px] font-medium text-slate-400">{recording ? "나 · 입력 중" : "나"}</span>
+                      <div className="rounded-xl rounded-br-sm bg-blue-600/60 px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap text-white">
                         {sttTranscript || (recording ? "말씀해 주세요…" : "")}
                       </div>
                     </div>
                   </div>
                 )}
               </div>
-
-              {pollTimeout && !debateState?.waitingForUser && (
-                <p className="mt-2 text-center text-xs text-muted-foreground">응답이 지연되고 있습니다. 잠시만 기다려주세요.</p>
-              )}
-
-              {/* Input Area — 공개 큐 비워진 뒤에만(revealing=false). 배치 응답에 waitingForUser가 같이 와도
-                  새 턴 공개가 끝난 다음 입력창이 뜨도록 한다. */}
-              {phase === "debating" && debateState?.waitingForUser && !revealing && (
-                <div className="mt-4 space-y-2">
-                  {isPractice && feedbackTurn ? (
-                    /* PRACTICE: 턴 평가 패널 → 다시 말하기 / 확정 */
-                    <div className="space-y-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-semibold text-foreground">이번 발언 피드백</p>
-                        {feedbackTurn.weightedScore != null && (
-                          <Badge variant="outline" className="border-emerald-500/40 text-emerald-500">
-                            {feedbackTurn.weightedScore.toFixed(1)}점
-                          </Badge>
-                        )}
-                      </div>
-                      {feedbackTurn.evalStrengths && (
-                        <div>
-                          <p className="text-xs font-medium text-emerald-500">잘한 점</p>
-                          <p className="text-sm text-foreground/90 whitespace-pre-wrap">{feedbackTurn.evalStrengths}</p>
-                        </div>
-                      )}
-                      {feedbackTurn.evalImprovements && (
-                        <div>
-                          <p className="text-xs font-medium text-amber-500">개선할 점</p>
-                          <p className="text-sm text-foreground/90 whitespace-pre-wrap">{feedbackTurn.evalImprovements}</p>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 pt-1">
-                        <Button
-                          variant="outline"
-                          className="flex-1 gap-1.5"
-                          disabled={submitting}
-                          onClick={() => {
-                            // 다시 말하기 — 평가 패널 닫고 재녹음. 다음 제출(commit=false)이 직전 시도를 교체.
-                            setFeedbackTurn(null)
-                            setSttReady(false)
-                            setRecording(false)
-                          }}
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                          다시 말하기
-                        </Button>
-                        <Button
-                          className="flex-1 gap-1.5"
-                          disabled={submitting}
-                          onClick={handleCommit}
-                        >
-                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                          확정하고 다음으로
-                        </Button>
-                      </div>
-                    </div>
-                  ) : isPractice && awaitingEval ? (
-                    /* PRACTICE: 평가 도착 대기 */
-                    <div className="flex items-center justify-center gap-2 rounded-lg border border-border/50 bg-secondary/30 py-4 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      발언을 평가하고 있어요...
-                    </div>
+            ) : (
+              <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+                {/* 실전 — 내 카메라를 4:3 고정 비율로 중앙에 (하단 입력·제한시간이 떠도 크기 불변) */}
+                <div className="relative aspect-[4/3] h-[min(50vh,460px,calc(100vh-380px))] shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-sm">
+                  {mediaStream ? (
+                    <video ref={debateVideoRef} autoPlay playsInline muted className="h-full w-full object-cover scale-x-[-1]" />
                   ) : (
-                    <>
-                      {/* 실시간 트랜스크립트는 내 카메라 하단 자막에서 표시 (중복 제거) */}
-                      {/* 실시간 STT 피드백 — 연습 모드에서만 (실전은 종료 후 리포트에서 한 번에) */}
-                      {isPractice && sttFeedback && (
-                        <p className="text-xs text-amber-500 px-1">{sttFeedback}</p>
-                      )}
-                      {/* 빈 발화 제출 등 안내 (409 DEBATE_STT_NOT_READY) */}
-                      {submitNotice && (
-                        <p className="text-xs text-rose-500 px-1">{submitNotice}</p>
-                      )}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {/* 녹음 토글 (제출 전 재녹음은 양 모드 모두 허용) */}
-                        <Button
-                          variant={recording ? "destructive" : "outline"}
-                          onClick={() => {
-                            if (recording) {
-                              setRecording(false)
-                            } else {
-                              setSttReady(false)
-                              setSubmitNotice(null)
-                              setRecording(true)
-                            }
-                          }}
-                          disabled={submitting}
-                          className="gap-2"
-                        >
-                          {recording ? (
-                            <>
-                              <MicOff className="h-4 w-4" />
-                              녹음 완료
-                            </>
-                          ) : (
-                            <>
-                              <Mic className="h-4 w-4" />
-                              {sttTranscript ? "다시 녹음" : "녹음 시작"}
-                            </>
-                          )}
-                        </Button>
-                        {/* 오디오 레벨 인디케이터 */}
-                        {recording && (
-                          <div className="flex items-end gap-0.5 h-6">
-                            {[0.4, 0.6, 1, 0.6, 0.4].map((scale, i) => (
-                              <div
-                                key={i}
-                                className="w-1 rounded-full bg-primary transition-all duration-75"
-                                style={{ height: `${Math.max(4, sttAudioLevel * scale * 0.24)}px` }}
-                              />
-                            ))}
-                          </div>
-                        )}
-                        {/* 처리 중 표시 */}
-                        {!recording && sttTranscript && !sttReady && (
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            처리 중...
-                          </div>
-                        )}
-                        {/* 제출 — PRACTICE는 시도(commit=false)→평가, REAL은 확정(commit=true)→잠금 */}
-                        <Button
-                          onClick={isPractice ? handleAttempt : handleCommit}
-                          disabled={!sttReady || submitting}
-                          className="shrink-0 ml-auto gap-1.5"
-                        >
-                          {submitting ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <>
-                              <Send className="h-4 w-4" />
-                              {isPractice ? "평가 받기" : "제출"}
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </>
+                    <div className="flex h-full items-center justify-center"><User className="h-20 w-20 text-slate-300" /></div>
                   )}
+                  {recording && (
+                    <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-slate-900/55 px-3 py-1 backdrop-blur-sm">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+                      <span className="text-xs font-bold tracking-wider text-white">REC</span>
+                    </div>
+                  )}
+                  <div className="absolute bottom-4 left-4 rounded-lg bg-slate-900/55 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">나 · {selectedStance === "PRO" ? "찬성" : "반대"}</div>
+                  <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full bg-slate-900/55 whitespace-nowrap px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
+                    <Lock className="h-3 w-3" />발언 내용은 종료 후 리포트에서 확인
+                  </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* 분기 선택 — 반박 라운드 종료 후(REBUTTAL_1_DECISION). 발언이 아니라 버튼 선택.
-                  availableChoices에 rebut_again이 없으면(REBUTTAL_2 후) '토론 마무리'만 노출. */}
-              {phase === "debating" && debateState?.awaitingDecision && !revealing && (() => {
-                const choices = debateState.availableChoices ?? ["rebut_again", "finish"]
-                const canRebutAgain = choices.includes("rebut_again")
-                return (
-                  <div className="mt-4 space-y-2">
-                    <p className="text-center text-sm text-muted-foreground">
-                      {canRebutAgain ? "반박을 한 번 더 할까요, 토론을 마무리할까요?" : "토론을 마무리할까요?"}
-                    </p>
-                    {submitNotice && (
-                      <p className="text-center text-xs text-rose-500">{submitNotice}</p>
-                    )}
-                    <div className="flex items-center gap-2">
-                      {canRebutAgain && (
-                        <Button
-                          variant="outline"
-                          className="flex-1 gap-1.5"
-                          disabled={branchPending !== null}
-                          onClick={() => handleBranch("rebut_again")}
-                        >
-                          {branchPending === "rebut_again" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                          반박 한 번 더
-                        </Button>
+            {/* 음성 건너뛰기 — 사회자/상대 TTS를 끝까지 듣지 않고 진행 (연습모드만, 실전은 숨김) */}
+            {revealing && isPractice && (
+              <div className="flex shrink-0 justify-center">
+                <button onClick={handleSkipAudio} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50">
+                  <SkipForward className="h-3.5 w-3.5" />음성 건너뛰기
+                </button>
+              </div>
+            )}
+
+            {pollTimeout && !debateState?.waitingForUser && (
+              <p className="shrink-0 text-center text-xs text-slate-400">응답이 지연되고 있습니다. 잠시만 기다려주세요.</p>
+            )}
+
+            {/* 입력 / 피드백 / 평가 대기 */}
+            {phase === "debating" && debateState?.waitingForUser && !revealing && (
+              <div className="shrink-0 space-y-2">
+                {isPractice && feedbackTurn ? (
+                  <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-bold text-slate-900">이번 발언 피드백</p>
+                      {feedbackTurn.weightedScore != null && (
+                        <span className="rounded-full border border-emerald-300 px-2.5 py-0.5 text-xs font-bold text-emerald-600">{feedbackTurn.weightedScore.toFixed(1)}점</span>
                       )}
-                      <Button
-                        className="flex-1 gap-1.5"
-                        disabled={branchPending !== null}
-                        onClick={() => handleBranch("finish")}
-                      >
-                        {branchPending === "finish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                        토론 마무리
+                    </div>
+                    {feedbackTurn.evalStrengths && (
+                      <div>
+                        <p className="text-xs font-bold text-emerald-600">잘한 점</p>
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{feedbackTurn.evalStrengths}</p>
+                      </div>
+                    )}
+                    {feedbackTurn.evalImprovements && (
+                      <div>
+                        <p className="text-xs font-bold text-amber-600">개선할 점</p>
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{feedbackTurn.evalImprovements}</p>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button variant="outline" className="flex-1 gap-1.5" disabled={submitting} onClick={() => { setFeedbackTurn(null); setSttReady(false); setRecording(false) }}>
+                        <RotateCcw className="h-4 w-4" />다시 말하기
+                      </Button>
+                      <Button className="flex-1 gap-1.5 bg-blue-600 text-white hover:bg-blue-700" disabled={submitting} onClick={handleCommit}>
+                        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}확정하고 다음으로
                       </Button>
                     </div>
                   </div>
-                )
-              })()}
+                ) : isPractice && awaitingEval ? (
+                  <div className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white py-4 text-sm text-slate-500 shadow-sm">
+                    <Loader2 className="h-4 w-4 animate-spin" />발언을 평가하고 있어요...
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                    {/* 실전모드 제한시간 — 종료 시 입력만 잠금(녹음 버튼 비활성), 제출은 사용자가 직접 */}
+                    {isExam && (
+                      <div className="mb-2 flex items-center justify-between px-1">
+                        <span className="text-xs text-slate-500">제한 시간</span>
+                        <span className={cn(
+                          "font-mono text-sm font-bold tabular-nums",
+                          turnTimeUp ? "text-rose-500" : turnTimeLeft <= 30 ? "text-amber-600" : "text-slate-700"
+                        )}>
+                          {String(Math.floor(turnTimeLeft / 60)).padStart(2, "0")}:{String(turnTimeLeft % 60).padStart(2, "0")}
+                        </span>
+                      </div>
+                    )}
+                    {turnTimeUp && <p className="mb-2 px-1 text-xs font-medium text-rose-500">시간이 종료되었습니다. 제출 버튼을 눌러 다음으로 진행하세요.</p>}
+                    {isPractice && sttFeedback && <p className="mb-2 px-1 text-xs text-amber-600">{sttFeedback}</p>}
+                    {submitNotice && <p className="mb-2 px-1 text-xs text-rose-500">{submitNotice}</p>}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant={recording ? "destructive" : "outline"}
+                        onClick={() => { if (recording) { setRecording(false) } else { setSttReady(false); setSubmitNotice(null); setRecording(true) } }}
+                        disabled={submitting || turnTimeUp}
+                        className="gap-2"
+                      >
+                        {recording ? (<><MicOff className="h-4 w-4" />녹음 완료</>) : (<><Mic className="h-4 w-4" />{sttTranscript ? "다시 녹음" : "녹음 시작"}</>)}
+                      </Button>
+                      {recording && (
+                        <div className="flex h-6 items-end gap-0.5">
+                          {[0.4, 0.6, 1, 0.6, 0.4].map((scale, i) => (
+                            <div key={i} className="w-1 rounded-full bg-blue-600 transition-all duration-75" style={{ height: `${Math.max(4, sttAudioLevel * scale * 0.24)}px` }} />
+                          ))}
+                        </div>
+                      )}
+                      {!recording && sttTranscript && !sttReady && (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500"><Loader2 className="h-3 w-3 animate-spin" />처리 중...</div>
+                      )}
+                      <Button onClick={isPractice ? handleAttempt : handleCommit} disabled={!sttReady || submitting} className="ml-auto shrink-0 gap-1.5 bg-blue-600 text-white hover:bg-blue-700">
+                        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (<><Send className="h-4 w-4" />{isPractice ? "평가 받기" : "제출"}</>)}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
-              {/* Ending */}
-              {phase === "ending" && (
-                <div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-border/50 bg-card p-6">
-                  <Trophy className="h-8 w-8 text-primary" />
-                  <p className="text-sm font-medium text-foreground">토론이 종료되었습니다</p>
-                  <Button onClick={handleEnd}>
-                    리포트 확인하기
-                  </Button>
+            {/* 분기 선택 */}
+            {phase === "debating" && debateState?.awaitingDecision && !revealing && (() => {
+              const choices = debateState.availableChoices ?? ["rebut_again", "finish"]
+              const canRebutAgain = choices.includes("rebut_again")
+              return (
+                <div className="shrink-0 space-y-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                  <p className="text-center text-sm text-slate-500">{canRebutAgain ? "반박을 한 번 더 할까요, 토론을 마무리할까요?" : "토론을 마무리할까요?"}</p>
+                  {submitNotice && <p className="text-center text-xs text-rose-500">{submitNotice}</p>}
+                  <div className="flex items-center gap-2">
+                    {canRebutAgain && (
+                      <Button variant="outline" className="flex-1 gap-1.5" disabled={branchPending !== null} onClick={() => handleBranch("rebut_again")}>
+                        {branchPending === "rebut_again" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}반박 한 번 더
+                      </Button>
+                    )}
+                    <Button className="flex-1 gap-1.5 bg-blue-600 text-white hover:bg-blue-700" disabled={branchPending !== null} onClick={() => handleBranch("finish")}>
+                      {branchPending === "finish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}토론 마무리
+                    </Button>
+                  </div>
                 </div>
-              )}
-            </div>
+              )
+            })()}
 
-            {/* 실시간 분석 패널 (xl 이상에서만 표시) — 실전 모드는 종료 후 리포트에서만 확인 */}
-            {isPractice && (
-            <div className="hidden xl:flex w-48 shrink-0 flex-col">
+            {/* Ending */}
+            {phase === "ending" && (
+              <div className="flex shrink-0 flex-col items-center gap-3 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600"><Trophy className="h-6 w-6" /></span>
+                <p className="text-sm font-bold text-slate-900">토론이 종료되었습니다</p>
+                <Button onClick={handleEnd} className="bg-blue-600 text-white hover:bg-blue-700">리포트 확인하기</Button>
+              </div>
+            )}
+          </div>
+
+          {/* Right: 실시간 분석 (연습 전용) */}
+          {isPractice && (
+            <div className="hidden w-64 shrink-0 flex-col xl:flex">
               <AnalysisPanel title="실시간 분석">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">음성</div>
-                <div className="mb-3 grid grid-cols-3 gap-1.5">
-                  <div className="rounded-lg border border-border bg-background p-1.5 text-center">
-                    <div className="text-sm font-bold text-foreground">{sttWpm > 0 ? Math.round(sttWpm) : "--"}</div>
-                    <div className="text-[9px] text-muted-foreground">WPM</div>
+                <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">음성</p>
+                <div className="mb-4 grid grid-cols-3 gap-2">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
+                    <div className="font-mono text-lg font-bold text-slate-900">{sttWpm > 0 ? Math.round(sttWpm) : "--"}</div>
+                    <div className="text-[10px] text-slate-500">WPM</div>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-1.5 text-center">
-                    <div className="text-sm font-bold text-foreground">{sttSilenceSec > 0 ? sttSilenceSec.toFixed(1) : "--"}</div>
-                    <div className="text-[9px] text-muted-foreground">침묵(초)</div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
+                    <div className="font-mono text-lg font-bold text-slate-900">{sttSilenceSec > 0 ? sttSilenceSec.toFixed(1) : "--"}</div>
+                    <div className="text-[10px] text-slate-500">침묵(초)</div>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-1.5 text-center">
-                    <div className="text-sm font-bold text-foreground">{sttFillerCount > 0 ? sttFillerCount : "--"}</div>
-                    <div className="text-[9px] text-muted-foreground">필러워드</div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
+                    <div className="font-mono text-lg font-bold text-slate-900">{sttFillerCount > 0 ? sttFillerCount : "--"}</div>
+                    <div className="text-[10px] text-slate-500">필러워드</div>
                   </div>
                 </div>
-
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">영상</div>
-                <div className="space-y-2">
-                  <div>
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">시선 고정률</span>
-                      <span className="text-xs font-semibold text-foreground">{Math.round(gazeRatio)}%</span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${gazeRatio}%` }} />
-                    </div>
+                <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">영상</p>
+                <div className="mb-3">
+                  <div className="mb-1.5 flex items-center justify-between text-xs">
+                    <span className="text-slate-500">시선 고정률</span>
+                    <span className="font-bold text-slate-900">{Math.round(gazeRatio)}%</span>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-1.5 text-center">
-                    <div className="text-sm font-bold text-foreground">{gazeOffCount}</div>
-                    <div className="text-[9px] text-muted-foreground">시선이탈</div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full rounded-full bg-blue-600 transition-all duration-500" style={{ width: `${gazeRatio}%` }} />
                   </div>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                  <span className="text-xs text-slate-500">시선 이탈</span>
+                  <span className="font-mono text-lg font-bold text-slate-900">{gazeOffCount}</span>
                 </div>
               </AnalysisPanel>
             </div>
-            )}
-            </div>
-          ) : null}
-        </div>
-      </main>
+          )}
+        </main>
+      )}
     </div>
   )
 }

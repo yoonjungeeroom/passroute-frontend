@@ -72,6 +72,7 @@ interface Params {
   fillerCount: number
   gazeRatio: number
   gazeOffCount: number
+  getPresignedUrlFn?: (sessionId: number, questionId: number) => Promise<{ uploadUrl: string; fileUrl: string }>
 }
 
 export interface UseClipRecorderReturn {
@@ -88,10 +89,14 @@ export function useClipRecorder({
   fillerCount,
   gazeRatio,
   gazeOffCount,
+  getPresignedUrlFn,
 }: Params): UseClipRecorderReturn {
   const clipsRef = useRef<ClipEntry[]>([])
   const stopPromiseRef = useRef<Promise<void>>(Promise.resolve())
+  const recorderRef = useRef<MediaRecorder | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const getPresignedUrlFnRef = useRef(getPresignedUrlFn ?? getPresignedUrl)
+  useEffect(() => { getPresignedUrlFnRef.current = getPresignedUrlFn ?? getPresignedUrl }, [getPresignedUrlFn])
 
   const analysisRef = useRef({ wpm, silenceSec, fillerCount, gazeRatio, gazeOffCount })
   useEffect(() => {
@@ -119,6 +124,7 @@ export function useClipRecorder({
     } catch {
       return
     }
+    recorderRef.current = recorder
 
     let resolveStop!: () => void
     stopPromiseRef.current = new Promise<void>((res) => { resolveStop = res })
@@ -169,27 +175,39 @@ export function useClipRecorder({
 
     return () => {
       clearInterval(timer)
+      recorderRef.current = null
       if (recorder.state !== "inactive") recorder.stop()
     }
   }, [active, stream])
 
   const uploadWorstClip = useCallback(async (sessionId: number): Promise<{ url: string; score: number; questionId: number; reason: ClipReason } | null> => {
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.stop()
+    }
     await stopPromiseRef.current
 
-    if (clipsRef.current.length === 0) return null
+    if (clipsRef.current.length === 0) {
+      console.warn("[clip-recorder] no clips recorded, skipping worst clip upload")
+      return null
+    }
 
     const worst = clipsRef.current.reduce((min, c) => c.score < min.score ? c : min)
     setIsUploading(true)
     try {
-      const { uploadUrl, fileUrl } = await getPresignedUrl(sessionId, worst.questionId)
-      await fetch(uploadUrl, {
+      const { uploadUrl, fileUrl } = await getPresignedUrlFnRef.current(sessionId, worst.questionId)
+      const res = await fetch(uploadUrl, {
         method: "PUT",
         body: worst.blob,
         headers: { "Content-Type": "video/webm" },
       })
+      if (!res.ok) {
+        console.error("[clip-recorder] S3 upload failed", res.status, await res.text().catch(() => ""))
+        return null
+      }
       clipsRef.current = []
       return { url: fileUrl, score: worst.score, questionId: worst.questionId, reason: worst.reason }
-    } catch {
+    } catch (err) {
+      console.error("[clip-recorder] worst clip upload error", err)
       return null
     } finally {
       setIsUploading(false)

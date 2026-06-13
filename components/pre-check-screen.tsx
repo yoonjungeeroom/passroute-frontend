@@ -113,8 +113,9 @@ export function PreCheckScreen({
             const data = JSON.parse(e.data as string)
             if (data.status === "completed" && data.text) {
               sttAccumText += data.text as string
-              const keywords = ["안녕", "면접", "시작"]
-              if (keywords.every(k => sttAccumText.includes(k))) sttGotText = true
+              // const keywords = ["안녕", "면접", "시작"]
+              // if (keywords.every(k => sttAccumText.includes(k))) sttGotText = true
+              sttGotText = true
             }
           } catch { /* ignore */ }
         }

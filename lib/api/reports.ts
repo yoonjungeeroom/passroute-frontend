@@ -1,5 +1,5 @@
 import { apiFetch, getAuthHeaders } from "./client"
-import type { InterviewReportResponse, DebateReportResponse } from "@/types/report"
+import type { InterviewReportResponse, DebateReportResponse, SelfIntroReportResponse } from "@/types/report"
 
 export interface ReportListItem {
   reportType: string
@@ -39,6 +39,33 @@ export async function getReportList(params?: {
     `/reports${query ? `?${query}` : ""}`,
     { method: "GET" },
     "리포트 목록 조회에 실패했습니다"
+  )
+}
+
+// 면접 리포트(세션) 삭제 — soft delete. 성공 200(Void), 권한 없음 403 / 없음 404는 ApiError로 throw.
+export async function deleteInterviewReport(sessionId: number): Promise<void> {
+  return apiFetch<void>(
+    `/reports/interview/${sessionId}`,
+    { method: "DELETE" },
+    "리포트 삭제에 실패했습니다"
+  )
+}
+
+// 토론 리포트(세션) 삭제 — soft delete. 면접과 동일 계약.
+export async function deleteDebateReport(sessionId: number): Promise<void> {
+  return apiFetch<void>(
+    `/reports/debate/${sessionId}`,
+    { method: "DELETE" },
+    "리포트 삭제에 실패했습니다"
+  )
+}
+
+// 자소서에 연결된 면접 세션들의 집계 리포트. 응시 이력 0건이어도 200 + 빈(totalSessions:0) 응답.
+export async function getSelfIntroReport(selfIntroId: number): Promise<SelfIntroReportResponse> {
+  return apiFetch<SelfIntroReportResponse>(
+    `/reports/self-intro/${selfIntroId}`,
+    { method: "GET" },
+    "자소서 리포트 조회에 실패했습니다"
   )
 }
 

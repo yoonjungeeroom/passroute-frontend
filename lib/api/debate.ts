@@ -86,6 +86,7 @@ export interface SuggestTopicsResponse {
 export async function suggestDebateTopics(data: {
   keywords?: string[]
   count?: number
+  introId?: number
 }): Promise<SuggestTopicsResponse> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 120_000)
@@ -109,6 +110,7 @@ export async function generateDebateTopic(data: {
   title: string
   description?: string
   category: string
+  introId?: number
 }): Promise<DebateTopic> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 190_000)
@@ -146,6 +148,7 @@ export async function createDebateSession(data: {
   personaId: number
   difficulty: "EASY" | "NORMAL" | "HARD"
   mode: DebateMode // 백엔드 @NotNull — 누락 시 400
+  introId?: number
 }): Promise<DebateSessionCreateResponse> {
   return apiFetch<DebateSessionCreateResponse>(
     "/debate/sessions",
@@ -204,5 +207,38 @@ export async function endDebateSession(sessionId: number): Promise<void> {
     `/debate/${sessionId}/end`,
     { method: "POST" },
     "토론 종료에 실패했습니다"
+  )
+}
+
+export async function getDebatePresignedUrl(
+  sessionId: number,
+  questionId: number,
+): Promise<{ uploadUrl: string; fileUrl: string }> {
+  return apiFetch<{ uploadUrl: string; fileUrl: string }>(
+    `/debate/${sessionId}/clip-upload-url?questionId=${questionId}`,
+    { method: "GET" },
+    "업로드 URL 조회에 실패했습니다"
+  )
+}
+
+export async function saveDebateWorstClip(
+  sessionId: number,
+  videoUrl: string,
+  clipScore: number,
+  questionId: number,
+  clipReason: string,
+): Promise<void> {
+  await apiFetch<void>(
+    `/debate/${sessionId}/worst-clip`,
+    { method: "POST", body: JSON.stringify({ videoUrl, clipScore, questionId, clipReason }) },
+    "클립 저장에 실패했습니다"
+  )
+}
+
+export async function getDebateWorstClip(sessionId: number): Promise<{ videoUrl: string; clipReason: string | null } | null> {
+  return apiFetch<{ videoUrl: string; clipReason: string | null } | null>(
+    `/debate/${sessionId}/worst-clip`,
+    { method: "GET" },
+    "클립 조회에 실패했습니다"
   )
 }
