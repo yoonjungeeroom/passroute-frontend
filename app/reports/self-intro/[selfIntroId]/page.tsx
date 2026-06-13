@@ -8,11 +8,16 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
   ChevronLeft, ChevronRight, Loader2, Briefcase, Play,
-  TrendingUp, TrendingDown, AlertTriangle, FileText, Sparkles, Trophy,
+  TrendingUp, TrendingDown, AlertTriangle, FileText, Sparkles, Trophy, Trash2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { getReportList, getSelfIntroReport, type ReportListItem } from "@/lib/api/reports"
+import { getReportList, getSelfIntroReport, deleteInterviewReport, type ReportListItem } from "@/lib/api/reports"
 import { SkillBar } from "@/components/reports/SkillBar"
+import {
+  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
+  AlertDialogFooter, AlertDialogTitle, AlertDialogDescription,
+  AlertDialogCancel, AlertDialogAction,
+} from "@/components/ui/alert-dialog"
 import type { SelfIntroReportResponse } from "@/types/report"
 
 const ITEM_LABELS: Record<string, string> = {
@@ -114,6 +119,7 @@ function SelfIntroReportContent() {
   const [sessions, setSessions] = useState<ReportListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!selfIntroId || isNaN(selfIntroId)) {
@@ -148,6 +154,21 @@ function SelfIntroReportContent() {
     load()
     return () => { cancelled = true }
   }, [selfIntroId])
+
+  async function handleDelete(sessionId: number) {
+    setDeleteError(null)
+    const prev = sessions
+    setSessions(list => list.filter(s => s.domainId !== sessionId)) // 낙관적 제거
+    try {
+      await deleteInterviewReport(sessionId)
+      // 평균·추이 집계가 바뀌므로 조용히 재조회 (전체 로딩 스피너 없이)
+      const fresh = await getSelfIntroReport(selfIntroId).catch(() => null)
+      if (fresh) setReport(fresh)
+    } catch {
+      setSessions(prev) // 실패 시 롤백
+      setDeleteError("리포트 삭제에 실패했어요. 잠시 후 다시 시도해주세요.")
+    }
+  }
 
   const empty = !report || report.totalSessions === 0
   const readiness = report?.readiness ? READINESS[report.readiness.level] : null
@@ -375,35 +396,69 @@ function SelfIntroReportContent() {
             {sessions.length > 0 && (
               <div>
                 <h3 className="mb-3 text-sm font-semibold text-foreground">연습 기록 {sessions.length}건</h3>
+                {deleteError && (
+                  <p className="mb-3 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-500">{deleteError}</p>
+                )}
                 <div className="space-y-2.5">
                   {sessions.map((s) => (
-                    <button
+                    <div
                       key={s.domainId}
-                      onClick={() => router.push(`/reports/interview/${s.domainId}`)}
-                      className="flex w-full items-center gap-4 rounded-xl border border-border bg-white p-4 text-left transition-all hover:border-primary/20 hover:shadow-sm"
+                      className="flex w-full items-center gap-1 rounded-xl border border-border bg-white pr-2 transition-all hover:border-primary/20 hover:shadow-sm"
                     >
-                      <ScoreRing score={s.totalScore} size={52} />
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[10px] font-medium",
-                              s.interviewType?.toLowerCase() === "technical"
-                                ? "border-sky-500/30 bg-sky-500/10 text-sky-600"
-                                : "border-violet-500/30 bg-violet-500/10 text-violet-600"
-                            )}
-                          >
-                            {s.interviewType?.toLowerCase() === "technical" ? "기술" : "인성"}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">{formatDate(s.date)}</span>
+                      <button
+                        onClick={() => router.push(`/reports/interview/${s.domainId}`)}
+                        className="flex min-w-0 flex-1 items-center gap-4 p-4 text-left"
+                      >
+                        <ScoreRing score={s.totalScore} size={52} />
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex items-center gap-2">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[10px] font-medium",
+                                s.interviewType?.toLowerCase() === "technical"
+                                  ? "border-sky-500/30 bg-sky-500/10 text-sky-600"
+                                  : "border-violet-500/30 bg-violet-500/10 text-violet-600"
+                              )}
+                            >
+                              {s.interviewType?.toLowerCase() === "technical" ? "기술" : "인성"}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">{formatDate(s.date)}</span>
+                          </div>
+                          {s.feedbackPreview && (
+                            <p className="truncate text-sm text-muted-foreground">{s.feedbackPreview}</p>
+                          )}
                         </div>
-                        {s.feedbackPreview && (
-                          <p className="truncate text-sm text-muted-foreground">{s.feedbackPreview}</p>
-                        )}
-                      </div>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    </button>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      </button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <button
+                            aria-label="리포트 삭제"
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>이 연습 기록을 삭제할까요?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              {formatDate(s.date)} 면접 연습과 분석 리포트가 삭제됩니다. 삭제하면 평균·추이 집계에서도 제외되며 되돌릴 수 없어요.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>취소</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleDelete(s.domainId)}
+                              className="bg-red-500 text-white hover:bg-red-600"
+                            >
+                              삭제
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   ))}
                 </div>
               </div>
