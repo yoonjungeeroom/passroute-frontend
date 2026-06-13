@@ -105,6 +105,8 @@ function LiveInterviewScreen({
   role,
   stage,
   aiInterviewer,
+  interviewerVideo,
+  isQuestionAudioPlaying,
   onEnd,
   onExitEarly,
   stream,
@@ -117,6 +119,8 @@ function LiveInterviewScreen({
   role?: string
   stage?: string
   aiInterviewer?: string
+  interviewerVideo?: { speakingVideoUrl?: string | null; silenceVideoUrl?: string | null }
+  isQuestionAudioPlaying: boolean
   onEnd: () => void
   onExitEarly: () => void
   stream: MediaStream | null
@@ -436,28 +440,21 @@ function LiveInterviewScreen({
             <div className="grid h-full grid-cols-1 gap-3 p-3 lg:grid-cols-2">
               <div className="relative flex items-center justify-center overflow-hidden rounded-lg bg-black">
                 {(() => {
-                  const videos = AVATAR_VIDEOS[aiInterviewer ?? "TEAM_LEAD"] ?? AVATAR_VIDEOS.TEAM_LEAD
-                  const isSpeaking = answerState === "waiting"
+                  const fallbackVideos = AVATAR_VIDEOS[aiInterviewer ?? "TEAM_LEAD"] ?? AVATAR_VIDEOS.TEAM_LEAD
+                  const speakingVideoUrl = interviewerVideo?.speakingVideoUrl || fallbackVideos.speaking
+                  const silenceVideoUrl = interviewerVideo?.silenceVideoUrl || fallbackVideos.idle
+                  const videoUrl = isQuestionAudioPlaying ? speakingVideoUrl : silenceVideoUrl
 
                   return (
-                    <>
-                      <video
-                        src={videos.speaking}
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        className={cn("h-full w-full object-cover", !isSpeaking && "hidden")}
-                      />
-                      <video
-                        src={videos.idle}
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        className={cn("h-full w-full object-cover", isSpeaking && "hidden")}
-                      />
-                    </>
+                    <video
+                      key={videoUrl}
+                      src={videoUrl}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="h-full w-full object-cover"
+                    />
                   )
                 })()}
                 <div className="absolute bottom-3 left-3 rounded-full bg-black/50 px-2.5 py-1 backdrop-blur-sm">
@@ -518,21 +515,41 @@ function InterviewPageInner() {
     audioInput: "checking",
   })
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null)
+  const [isQuestionAudioPlaying, setIsQuestionAudioPlaying] = useState(false)
 
   // 면접관 TTS 재생 — 토론면접과 동일하게 단일 오디오 요소를 재사용한다.
   // (자동재생 정책 우회: 사전점검 완료 클릭 시점에 미리 활성화해 둠 → 이후 질문 표시 때 자동재생 가능)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const playQuestionAudio = useCallback((url: string | null | undefined) => {
-    if (!url) return // null(=TTS 미지원/비활성)이면 재생하지 않음
+    if (!url) {
+      audioRef.current?.pause()
+      setIsQuestionAudioPlaying(false)
+      return
+    }
     const audio = audioRef.current ?? (audioRef.current = new Audio())
+    audio.onplaying = () => setIsQuestionAudioPlaying(true)
+    audio.onended = () => setIsQuestionAudioPlaying(false)
+    audio.onpause = () => setIsQuestionAudioPlaying(false)
+    audio.onerror = () => setIsQuestionAudioPlaying(false)
     audio.pause()
     audio.src = url
     audio.currentTime = 0
-    audio.play().catch((e) => console.warn("[interview] TTS 자동재생 실패:", e))
+    audio.play().catch((e) => {
+      setIsQuestionAudioPlaying(false)
+      console.warn("[interview] TTS 자동재생 실패:", e)
+    })
   }, [])
   // 언마운트 시 정지
   useEffect(() => {
-    return () => { audioRef.current?.pause() }
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.onplaying = null
+        audioRef.current.onended = null
+        audioRef.current.onpause = null
+        audioRef.current.onerror = null
+        audioRef.current.pause()
+      }
+    }
   }, [])
 
   // Real device check
@@ -820,6 +837,11 @@ function InterviewPageInner() {
       role={searchParams?.get("role") || undefined}
       stage={searchParams?.get("stage") || undefined}
       aiInterviewer={searchParams?.get("aiInterviewer") || undefined}
+      interviewerVideo={{
+        speakingVideoUrl: searchParams?.get("speakingVideoUrl"),
+        silenceVideoUrl: searchParams?.get("silenceVideoUrl"),
+      }}
+      isQuestionAudioPlaying={isQuestionAudioPlaying}
       onEnd={handleInterviewEnd}
       onExitEarly={handleInterviewExitEarly}
       stream={mediaStream}
