@@ -60,25 +60,64 @@ function CountdownScreen({ onComplete }: { onComplete: () => void }) {
     return () => clearTimeout(timer)
   }, [count, onComplete])
 
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background/95">
-      {/* Top text */}
-      <p className="mb-8 text-lg text-muted-foreground">면접이 곧 시작됩니다</p>
+  const CIRCUMFERENCE = 2 * Math.PI * 70
+  const filled = (3 - count) / 3
+  const offset = CIRCUMFERENCE * (1 - filled)
 
-      {/* Countdown number */}
-      <div className="relative">
-        <div
-          key={count}
-          className="flex h-48 w-48 items-center justify-center rounded-full border-2 border-primary/30 bg-primary/10 animate-in zoom-in-50 duration-500"
-        >
-          <span className="text-8xl font-bold text-primary">{count}</span>
-        </div>
-        {/* Pulse ring */}
-        <div className="absolute inset-0 animate-ping rounded-full border-2 border-primary/20" />
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#F8F7F3]">
+      {/* Status pill */}
+      <div className="mb-8 flex items-center gap-2 rounded-full border border-[#E8E3DC] bg-white px-4 py-2 text-xs font-medium text-[#66788E]">
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+        </span>
+        카메라 · 마이크 활성화됨
       </div>
 
-      {/* Helper text */}
-      <p className="mt-8 text-sm text-muted-foreground">카메라와 마이크가 활성화되어 있습니다</p>
+      {/* Heading */}
+      <p className="mb-8 text-[15px] font-medium text-[#9A9389]">면접이 곧 시작됩니다</p>
+
+      {/* Ring */}
+      <div className="relative mb-8 h-40 w-40">
+        <svg
+          viewBox="0 0 160 160"
+          className="absolute inset-0 h-full w-full -rotate-90"
+        >
+          <circle
+            cx="80" cy="80" r="70"
+            fill="none"
+            stroke="#E8E3DC"
+            strokeWidth="3"
+          />
+          <circle
+            cx="80" cy="80" r="70"
+            fill="none"
+            stroke="#66788E"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={CIRCUMFERENCE}
+            strokeDashoffset={offset}
+            style={{ transition: "stroke-dashoffset 0.8s ease" }}
+          />
+        </svg>
+        <div className="absolute left-1/2 top-1/2 flex h-[124px] w-[124px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full bg-white shadow-sm">
+          <span
+            key={count}
+            className="text-[56px] font-bold leading-none tracking-tight text-[#3E3630] animate-in zoom-in-75 duration-300"
+            style={{ fontFamily: "'SpaceGrotesk', sans-serif" }}
+          >
+            {count}
+          </span>
+          <span className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-[#B1BCC9]">sec</span>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <p className="flex items-center gap-2 text-[13px] text-[#B1BCC9]">
+        <Clock size={13} />
+        잠시 후 자동으로 시작됩니다
+      </p>
     </div>
   )
 }
