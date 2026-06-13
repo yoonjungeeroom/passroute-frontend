@@ -150,7 +150,7 @@ function ScoreTrend({ trend, loading }: { trend: number[]; loading: boolean }) {
           <p className="text-[13px] font-medium text-slate-400">최근 {trend.length}회 면접 점수</p>
           <div className="mt-1 flex items-end gap-2">
             <span className="text-[36px] font-extrabold leading-none tracking-tight text-slate-900">
-              {last}
+              {last.toFixed(1)}
             </span>
             {delta !== 0 && (
               <span
@@ -162,7 +162,7 @@ function ScoreTrend({ trend, loading }: { trend: number[]; loading: boolean }) {
                 }
               >
                 <TrendingUp size={12} strokeWidth={2.6} />
-                {delta >= 0 ? "+" : ""}{delta}
+                {delta >= 0 ? "+" : ""}{delta.toFixed(1)}
               </span>
             )}
           </div>
