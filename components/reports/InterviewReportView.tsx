@@ -91,14 +91,8 @@ export function InterviewReportView({
       )}
 
       {/* 액션 */}
-      {(onReplay || onDetail) && (
+      {onDetail && (
         <div className="flex gap-2 pt-2">
-          {onReplay && (
-            <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={onReplay}>
-              <RotateCcw className="h-3 w-3" />
-              재연습
-            </Button>
-          )}
           {onDetail && (
             <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={onDetail}>
               <BarChart2 className="h-3 w-3" />
