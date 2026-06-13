@@ -18,6 +18,7 @@ const NAV: {
     ],
   },
   { label: "리포트", href: "/reports" },
+  { label: "토픽 분석", href: "/reports/topics" },
 ]
 
 export function TopNav({ userName = "사용자" }: { userName?: string }) {
@@ -28,9 +29,21 @@ export function TopNav({ userName = "사용자" }: { userName?: string }) {
 
   const initials = userName ? userName.slice(0, 2) : "—"
 
+  // 경로가 겹치는 메뉴(예: "/reports", "/reports/topics")가 동시에 활성화되지 않도록
+  // 가장 길게 일치하는 href를 가진 메뉴만 활성화 처리
+  const matchLength = (href?: string) => {
+    if (!href) return -1
+    if (pathname === href || pathname.startsWith(href + "/")) return href.length
+    return -1
+  }
+
+  const allHrefs = NAV.flatMap((it) => (it.href ? [it.href] : it.children?.map((c) => c.href) ?? []))
+  const bestMatchLength = Math.max(-1, ...allHrefs.map(matchLength))
+
   const isActive = (href?: string, children?: { href: string }[]) => {
-    if (href) return pathname === href || pathname.startsWith(href + "/")
-    if (children) return children.some((c) => pathname === c.href || pathname.startsWith(c.href + "/"))
+    if (bestMatchLength < 0) return false
+    if (href) return matchLength(href) === bestMatchLength
+    if (children) return children.some((c) => matchLength(c.href) === bestMatchLength)
     return false
   }
 
