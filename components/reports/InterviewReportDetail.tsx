@@ -53,12 +53,12 @@ export function InterviewReportDetail({ report }: { report: InterviewReportRespo
 
   return (
     <div className="space-y-6">
-      {/* 음성 / 표정 분석 */}
+      {/* 음성 / 시선 분석 */}
       {!voiceAnalysis && !faceAnalysis ? (
         <div className="flex items-center gap-3 rounded-xl border border-dashed border-border bg-muted/30 p-4">
           <FontAwesomeIcon icon={faMicrophone} className="h-4 w-4 shrink-0 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
-            이 세션은 음성·표정 분석 데이터가 없어요. 영상 면접으로 진행하면 분석 결과가 제공됩니다.
+            이 세션은 음성·시선 분석 데이터가 없어요. 영상 면접으로 진행하면 분석 결과가 제공됩니다.
           </p>
         </div>
       ) : (
@@ -81,7 +81,7 @@ export function InterviewReportDetail({ report }: { report: InterviewReportRespo
             <div className="rounded-xl border border-border p-4">
               <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
                 <FontAwesomeIcon icon={faEye} className="h-3.5 w-3.5 text-accent" />
-                표정 분석
+                시선 분석
                 <span className="ml-auto text-xs font-normal text-muted-foreground">{faceAnalysis.faceScore != null ? Math.round(faceAnalysis.faceScore) : "-"}점</span>
               </h4>
               <div className="grid grid-cols-3 gap-2">
