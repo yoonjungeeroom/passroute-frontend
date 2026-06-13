@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils"
 import { getReportList, getSelfIntroReport, deleteInterviewReport, type ReportListItem } from "@/lib/api/reports"
 import { SkillBar } from "@/components/reports/SkillBar"
+import { GrowthRadar } from "@/components/reports/GrowthRadar"
 import {
   AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
   AlertDialogFooter, AlertDialogTitle, AlertDialogDescription,
@@ -180,6 +181,12 @@ function SelfIntroReportContent() {
     ? Object.entries(report.itemAverages).sort((a, b) => a[1] - b[1])
     : []
   const changedTrends = (report?.itemTrend ?? []).filter((t) => t.direction !== "STABLE")
+  // 성장 프로파일 레이더: 첫 회 vs 최근 항목 점수 (추이 데이터가 있고 축 3개 이상일 때만)
+  const radarData = (report?.itemTrend ?? []).map((t) => ({
+    axis: ITEM_LABELS[t.item] ?? t.item,
+    first: Number(t.firstAvg.toFixed(1)),
+    last: Number(t.lastAvg.toFixed(1)),
+  }))
 
   return (
     <div className="min-h-screen w-full bg-slate-50 text-slate-900">
@@ -353,6 +360,17 @@ function SelfIntroReportContent() {
                 </div>
               )}
             </div>
+
+            {/* 성장 프로파일 레이더 (첫 회 → 최근) */}
+            {report.hasTrendData && radarData.length >= 3 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                <h3 className="mb-1 text-sm font-bold text-slate-900">성장 프로파일</h3>
+                <p className="mb-2 text-xs text-slate-400">
+                  첫 회와 최근 응시의 항목별 점수 비교 · 바깥쪽일수록 높은 점수
+                </p>
+                <GrowthRadar data={radarData} max={5} />
+              </div>
+            )}
 
             {/* 항목별 평균 */}
             {itemAverageEntries.length > 0 && (
