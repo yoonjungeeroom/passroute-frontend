@@ -9,7 +9,6 @@ const NAV: {
   href?: string
   children?: { label: string; desc: string; icon: React.ElementType; href: string }[]
 }[] = [
-  { label: "대시보드", href: "/dashboard" },
   { label: "면접 일정", href: "/schedule" },
   {
     label: "자료 관리",
