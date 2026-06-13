@@ -99,7 +99,7 @@ export default function ReportsPage() {
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null
     if (!token) { setStatsLoading(false); return }
-    getReportList({ type: "all", page: 0, size: 200 })
+    getReportList({ type: "all", page: 0, size: 100 })
       .then((res) => {
         if (res.items.length > 0) setAllReports(res.items)
       })
