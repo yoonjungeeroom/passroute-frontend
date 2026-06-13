@@ -8,11 +8,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 import {
   Select,
   SelectContent,
@@ -29,9 +27,9 @@ import {
   Calendar,
   Save,
   GraduationCap,
-  X
+  X,
+  Loader2,
 } from "lucide-react"
-import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   getSelfIntroDetail,
@@ -92,24 +90,32 @@ const experienceLevels = [
   { id: "experienced", label: "경력" },
 ]
 
-const interviewStages = [
-  "인성면접", "기술면접"
-]
+const interviewStages = ["인성면접", "기술면접"]
 
 const MAX_CHAR_LIMIT = 1000
+
+const careerLevelMap: Record<string, string> = {
+  intern: "INTERN",
+  entry: "JUNIOR",
+  experienced: "SENIOR",
+}
+
+const reverseCareerMap: Record<string, string> = {
+  INTERN: "intern",
+  JUNIOR: "entry",
+  SENIOR: "experienced",
+}
 
 export function SelfIntroModal({
   open,
   onOpenChange,
   editMode = false,
   editId = null,
-  onDelete
 }: SelfIntroModalProps) {
   const [data, setData] = useState<SelfIntroData>({
     company: "",
     role: "",
     experience: "",
-    experienceYears: undefined,
     jdText: "",
     jobPostingUrl: "",
     notes: "",
@@ -125,18 +131,6 @@ export function SelfIntroModal({
   const [deleting, setDeleting] = useState(false)
   const [loadingDetail, setLoadingDetail] = useState(false)
 
-  const careerLevelMap: Record<string, string> = {
-    intern: "INTERN",
-    entry: "JUNIOR",
-    experienced: "SENIOR",
-  }
-
-  const reverseCareerMap: Record<string, string> = {
-    INTERN: "intern",
-    JUNIOR: "entry",
-    SENIOR: "experienced",
-  }
-
   useEffect(() => {
     if (open && editMode && editId) {
       setLoadingDetail(true)
@@ -150,28 +144,26 @@ export function SelfIntroModal({
             jdText: detail.jobDescription || "",
             jobPostingUrl: detail.jobPostingUrl || "",
             notes: detail.memo || "",
-            questions: detail.items.length > 0
-              ? detail.items.map((item) => ({
-                  id: String(item.id),
-                  question: item.questionText,
-                  answer: item.answerText,
-                }))
-              : [{ id: "1", question: "", answer: "" }],
+            questions:
+              detail.items.length > 0
+                ? detail.items.map((item) => ({
+                    id: String(item.id),
+                    question: item.questionText,
+                    answer: item.answerText,
+                  }))
+                : [{ id: "1", question: "", answer: "" }],
             interviewDate: detail.interviewDate || "",
             interviewTime: detail.interviewTime || "",
             interviewStage: detail.interviewStage || "",
           })
         })
-        .catch(() => {
-          // keep empty form on error
-        })
+        .catch(() => {})
         .finally(() => setLoadingDetail(false))
     } else if (open && !editMode) {
       setData({
         company: "",
         role: "",
         experience: "",
-        experienceYears: undefined,
         jdText: "",
         jobPostingUrl: "",
         notes: "",
@@ -184,25 +176,30 @@ export function SelfIntroModal({
   }, [open, editMode, editId])
 
   const addQuestion = () => {
-    setData(prev => ({
+    setData((prev) => ({
       ...prev,
-      questions: [...prev.questions, { id: Date.now().toString(), question: "", answer: "" }]
+      questions: [
+        ...prev.questions,
+        { id: Date.now().toString(), question: "", answer: "" },
+      ],
     }))
   }
 
   const removeQuestion = (id: string) => {
     if (data.questions.length > 1) {
-      setData(prev => ({
+      setData((prev) => ({
         ...prev,
-        questions: prev.questions.filter(q => q.id !== id)
+        questions: prev.questions.filter((q) => q.id !== id),
       }))
     }
   }
 
   const updateQuestion = (id: string, field: "question" | "answer", value: string) => {
-    setData(prev => ({
+    setData((prev) => ({
       ...prev,
-      questions: prev.questions.map(q => q.id === id ? { ...q, [field]: value } : q)
+      questions: prev.questions.map((q) =>
+        q.id === id ? { ...q, [field]: value } : q
+      ),
     }))
   }
 
@@ -210,7 +207,6 @@ export function SelfIntroModal({
     const companyName = data.company.trim()
     const jobPosition = data.role.trim()
     const careerLevel = (careerLevelMap[data.experience] || "JUNIOR") as "INTERN" | "JUNIOR" | "SENIOR"
-
     if (!companyName || !jobPosition) return
 
     const payload = {
@@ -224,8 +220,8 @@ export function SelfIntroModal({
       interviewTime: data.interviewTime || undefined,
       interviewStage: data.interviewStage || undefined,
       items: data.questions
-        .filter(q => q.question.trim())
-        .map(q => ({ questionText: q.question, answerText: q.answer || undefined })),
+        .filter((q) => q.question.trim())
+        .map((q) => ({ questionText: q.question, answerText: q.answer || undefined })),
     }
 
     setSaving(true)
@@ -237,7 +233,6 @@ export function SelfIntroModal({
       }
       onOpenChange(false)
     } catch {
-      // stay open on error
     } finally {
       setSaving(false)
     }
@@ -250,7 +245,6 @@ export function SelfIntroModal({
       await deleteSelfIntro(editId)
       onOpenChange(false)
     } catch {
-      // stay open on error
     } finally {
       setDeleting(false)
     }
@@ -258,260 +252,298 @@ export function SelfIntroModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto border-border bg-card sm:max-w-2xl" onOpenAutoFocus={(e) => e.preventDefault()}>
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto border-slate-200 bg-white sm:max-w-2xl"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-            <FileText className="h-5 w-5 text-primary" />
+          <DialogTitle className="flex items-center gap-2 text-lg font-bold text-slate-900">
+            <FileText className="h-5 w-5 text-blue-600" />
             {editMode ? "자기소개서 수정" : "새 자기소개서 추가"}
           </DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground">
+          <DialogDescription className="text-sm text-slate-400">
             지원 정보와 자기소개서 문항을 입력해주세요
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {/* Section A: Application Info */}
-          <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-primary" />
-              <h3 className="font-semibold text-foreground">지원 정보</h3>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              {/* Company */}
-              <div className="space-y-1.5 relative">
-                <Label className="text-xs text-muted-foreground">기업명 *</Label>
-                <Input
-                  placeholder="기업명 입력 또는 선택"
-                  value={data.company}
-                  onChange={(e) => setData(prev => ({ ...prev, company: e.target.value }))}
-                  onFocus={() => setShowCompanySuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowCompanySuggestions(false), 150)}
-                  className="border-border bg-secondary/30 focus-visible:ring-0 focus-visible:border-primary"
-                />
-                {showCompanySuggestions && data.company !== "" && (
-                  <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-40 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
-                    {companies.filter(c => c.includes(data.company)).map(c => (
-                      <button key={c} type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-secondary/50" onMouseDown={() => setData(prev => ({ ...prev, company: c }))}>
-                        {c}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {showCompanySuggestions && data.company === "" && companies.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-40 overflow-y-auto rounded-lg border border-border bg-white shadow-lg">
-                    {companies.map(c => (
-                      <button key={c} type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-secondary/50" onMouseDown={() => setData(prev => ({ ...prev, company: c }))}>
-                        {c}
-                      </button>
-                    ))}
-                  </div>
-                )}
+        {loadingDetail ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
+          </div>
+        ) : (
+          <div className="space-y-7 py-2">
+            {/* 지원 정보 */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-blue-600" />
+                <h3 className="font-bold text-slate-900">지원 정보</h3>
               </div>
 
-              {/* Role */}
-              <div className="space-y-1.5 relative">
-                <Label className="text-xs text-muted-foreground">직무 *</Label>
-                <Input
-                  placeholder="직무 입력 또는 선택"
-                  value={data.role}
-                  onChange={(e) => setData(prev => ({ ...prev, role: e.target.value }))}
-                  onFocus={() => setShowRoleSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowRoleSuggestions(false), 150)}
-                  className="border-border bg-secondary/30"
-                />
-                {showRoleSuggestions && (
-                  <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-40 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
-                    {roles.filter(r => !data.role || r.includes(data.role)).map(r => (
-                      <button key={r} type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-secondary/50" onMouseDown={() => setData(prev => ({ ...prev, role: r }))}>
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Experience Level */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">경력 구분 *</Label>
-                <div className="flex gap-2">
-                  {experienceLevels.map((level) => (
-                    <button
-                      key={level.id}
-                      onClick={() => setData(prev => ({ ...prev, experience: level.id }))}
-                      className={cn(
-                        "flex-1 rounded-lg border px-3 py-2 text-sm transition-all",
-                        data.experience === level.id
-                          ? "border-primary bg-primary/10 text-foreground"
-                          : "border-border text-muted-foreground hover:border-primary/30"
-                      )}
-                    >
-                      {level.label}
-                    </button>
-                  ))}
+              <div className="grid gap-4 sm:grid-cols-2">
+                {/* 기업명 */}
+                <div className="relative space-y-1.5">
+                  <Label className="text-xs text-slate-400">기업명 *</Label>
+                  <Input
+                    placeholder="기업명 입력 또는 선택"
+                    value={data.company}
+                    onChange={(e) => setData((prev) => ({ ...prev, company: e.target.value }))}
+                    onFocus={() => setShowCompanySuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowCompanySuggestions(false), 150)}
+                    className="border-slate-200 bg-slate-50 focus-visible:border-blue-400 focus-visible:ring-0"
+                  />
+                  {showCompanySuggestions && (
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                      {companies
+                        .filter((c) => !data.company || c.includes(data.company))
+                        .map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                            onMouseDown={() => setData((prev) => ({ ...prev, company: c }))}
+                          >
+                            {c}
+                          </button>
+                        ))}
+                    </div>
+                  )}
                 </div>
-              </div>
 
-              {/* Experience Years (only show if experienced) */}
-              {data.experience === "experienced" && (
+                {/* 직무 */}
+                <div className="relative space-y-1.5">
+                  <Label className="text-xs text-slate-400">직무 *</Label>
+                  <Input
+                    placeholder="직무 입력 또는 선택"
+                    value={data.role}
+                    onChange={(e) => setData((prev) => ({ ...prev, role: e.target.value }))}
+                    onFocus={() => setShowRoleSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowRoleSuggestions(false), 150)}
+                    className="border-slate-200 bg-slate-50 focus-visible:border-blue-400 focus-visible:ring-0"
+                  />
+                  {showRoleSuggestions && (
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                      {roles
+                        .filter((r) => !data.role || r.includes(data.role))
+                        .map((r) => (
+                          <button
+                            key={r}
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                            onMouseDown={() => setData((prev) => ({ ...prev, role: r }))}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 경력 구분 */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">경력 연차</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={30}
-                    placeholder="연차를 입력하세요"
-                    value={data.experienceYears || ""}
-                    onChange={(e) => setData(prev => ({ ...prev, experienceYears: parseInt(e.target.value) || undefined }))}
-                    className="border-border bg-secondary/30"
-                  />
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Section B: Self-Introduction Questions */}
-          <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <GraduationCap className="h-4 w-4 text-primary" />
-              <h3 className="font-semibold text-foreground">자소서 문항</h3>
-              <Badge variant="secondary" className="text-xs">{data.questions.length}개</Badge>
-            </div>
-
-            <div className="space-y-4">
-              {data.questions.map((q, index) => (
-                <div key={q.id} className="space-y-2 rounded-xl border border-border bg-secondary/20 p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground">문항 {index + 1}</span>
-                    {data.questions.length > 1 && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeQuestion(q.id)}
-                        className="h-7 w-7 text-muted-foreground hover:text-rose-400"
+                  <Label className="text-xs text-slate-400">경력 구분 *</Label>
+                  <div className="flex gap-2">
+                    {experienceLevels.map((level) => (
+                      <button
+                        key={level.id}
+                        type="button"
+                        onClick={() => setData((prev) => ({ ...prev, experience: level.id }))}
+                        className={cn(
+                          "flex-1 rounded-lg border py-2 text-sm font-medium transition-all",
+                          data.experience === level.id
+                            ? "border-blue-400 bg-blue-50 text-blue-700"
+                            : "border-slate-200 text-slate-500 hover:border-blue-200 hover:text-slate-700"
+                        )}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
+                        {level.label}
+                      </button>
+                    ))}
                   </div>
-                  <Input
-                    placeholder="질문을 입력하세요"
-                    value={q.question}
-                    onChange={(e) => updateQuestion(q.id, "question", e.target.value)}
-                    className="border-border bg-secondary/30"
-                  />
-                  <div className="space-y-1">
-                    <Textarea
-                      placeholder="답변을 입력하세요"
-                      value={q.answer}
-                      onChange={(e) => updateQuestion(q.id, "answer", e.target.value)}
-                      className="min-h-[100px] border-border bg-secondary/30"
-                      maxLength={MAX_CHAR_LIMIT}
+                </div>
+
+                {/* 경력 연차 */}
+                {data.experience === "experienced" && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-slate-400">경력 연차</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={30}
+                      placeholder="연차를 입력하세요"
+                      value={data.experienceYears || ""}
+                      onChange={(e) =>
+                        setData((prev) => ({
+                          ...prev,
+                          experienceYears: parseInt(e.target.value) || undefined,
+                        }))
+                      }
+                      className="border-slate-200 bg-slate-50"
                     />
-                    <div className="flex justify-end">
-                      <span className={cn(
-                        "text-xs",
-                        q.answer.length > MAX_CHAR_LIMIT * 0.9 
-                          ? "text-rose-400" 
-                          : "text-muted-foreground"
-                      )}>
-                        {q.answer.length} / {MAX_CHAR_LIMIT}
-                      </span>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* 자소서 문항 */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <GraduationCap className="h-4 w-4 text-blue-600" />
+                <h3 className="font-bold text-slate-900">자소서 문항</h3>
+                <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-600">
+                  {data.questions.length}개
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {data.questions.map((q, index) => (
+                  <div
+                    key={q.id}
+                    className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-slate-700">문항 {index + 1}</span>
+                      {data.questions.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeQuestion(q.id)}
+                          className="grid h-7 w-7 place-items-center rounded-lg text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-400"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    <Input
+                      placeholder="질문을 입력하세요"
+                      value={q.question}
+                      onChange={(e) => updateQuestion(q.id, "question", e.target.value)}
+                      className="border-slate-200 bg-white focus-visible:border-blue-400 focus-visible:ring-0"
+                    />
+                    <div className="space-y-1">
+                      <Textarea
+                        placeholder="답변을 입력하세요"
+                        value={q.answer}
+                        onChange={(e) => updateQuestion(q.id, "answer", e.target.value)}
+                        className="min-h-[100px] border-slate-200 bg-white focus-visible:border-blue-400 focus-visible:ring-0"
+                        maxLength={MAX_CHAR_LIMIT}
+                      />
+                      <div className="flex justify-end">
+                        <span
+                          className={cn(
+                            "text-xs",
+                            q.answer.length > MAX_CHAR_LIMIT * 0.9
+                              ? "text-rose-400"
+                              : "text-slate-400"
+                          )}
+                        >
+                          {q.answer.length} / {MAX_CHAR_LIMIT}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
 
-              {/* Add Question Button - at the bottom for continuous writing flow */}
-              <Button
-                variant="outline"
-                onClick={addQuestion}
-                className="w-full gap-2 border-dashed border-border py-6 text-muted-foreground hover:border-primary/50 hover:text-foreground"
-              >
-                <Plus className="h-4 w-4" />
-                문항 추가
-              </Button>
-            </div>
-          </section>
-
-          {/* Section D: Interview Schedule */}
-          <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-primary" />
-              <h3 className="font-semibold text-foreground">면접 일정</h3>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">날짜</Label>
-                <Input
-                  type="date"
-                  value={data.interviewDate}
-                  onChange={(e) => setData(prev => ({ ...prev, interviewDate: e.target.value }))}
-                  className="border-border bg-secondary/30"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">시간</Label>
-                <Input
-                  type="time"
-                  value={data.interviewTime}
-                  onChange={(e) => setData(prev => ({ ...prev, interviewTime: e.target.value }))}
-                  className="border-border bg-secondary/30"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">면접 단계</Label>
-                <Select
-                  value={data.interviewStage}
-                  onValueChange={(value) => setData(prev => ({ ...prev, interviewStage: value }))}
+                <button
+                  type="button"
+                  onClick={addQuestion}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 py-4 text-sm font-semibold text-slate-400 transition-colors hover:border-blue-300 hover:text-blue-500"
                 >
-                  <SelectTrigger className="border-border bg-secondary/30">
-                    <SelectValue placeholder="단계 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {interviewStages.map((stage) => (
-                      <SelectItem key={stage} value={stage}>{stage}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <Plus className="h-4 w-4" />
+                  문항 추가
+                </button>
               </div>
-            </div>
-          </section>
-        </div>
+            </section>
 
-        {/* Footer Actions */}
-        <div className="flex items-center justify-between border-t border-border/30 pt-4">
-          <div className="flex items-center gap-2">
+            {/* 면접 일정 */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-blue-600" />
+                <h3 className="font-bold text-slate-900">면접 일정</h3>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-slate-400">날짜</Label>
+                  <Input
+                    type="date"
+                    value={data.interviewDate}
+                    onChange={(e) => setData((prev) => ({ ...prev, interviewDate: e.target.value }))}
+                    className="border-slate-200 bg-slate-50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-slate-400">시간</Label>
+                  <Input
+                    type="time"
+                    value={data.interviewTime}
+                    onChange={(e) => setData((prev) => ({ ...prev, interviewTime: e.target.value }))}
+                    className="border-slate-200 bg-slate-50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-slate-400">면접 단계</Label>
+                  <Select
+                    value={data.interviewStage}
+                    onValueChange={(value) =>
+                      setData((prev) => ({ ...prev, interviewStage: value }))
+                    }
+                  >
+                    <SelectTrigger className="border-slate-200 bg-slate-50">
+                      <SelectValue placeholder="단계 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {interviewStages.map((stage) => (
+                        <SelectItem key={stage} value={stage}>
+                          {stage}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+          <div>
             {editMode && editId && (
-              <Button
-                variant="ghost"
+              <button
+                type="button"
                 onClick={handleDelete}
                 disabled={deleting}
-                className="gap-1.5 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400"
+                className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-500 transition-colors hover:bg-rose-50"
               >
-                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {deleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
                 삭제
-              </Button>
+              </button>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
+            <button
+              type="button"
               onClick={() => onOpenChange(false)}
-              className="gap-1.5 border-border"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
             >
               <X className="h-4 w-4" />
               취소
-            </Button>
-            <Button
+            </button>
+            <button
+              type="button"
               onClick={handleSave}
-              disabled={saving}
-              className="gap-1.5 bg-primary text-white hover:opacity-90"
+              disabled={saving || !data.company.trim() || !data.role.trim()}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
               {saving ? "저장 중..." : "저장 완료"}
-            </Button>
+            </button>
           </div>
         </div>
       </DialogContent>
