@@ -126,6 +126,14 @@ interface PersonaSettings {
   difficulty: "EASY" | "NORMAL" | "HARD"
 }
 
+const debatePersonaImages: Record<string, string> = {
+  persona_01_stable: "/personas/debate_kim_jiwon.png",
+  persona_02_aggressive: "/personas/debate_park_dohyun.png",
+  persona_03_creative: "/personas/debate_lee_seoyeon.png",
+  persona_04_veteran: "/personas/debate_choi_taejin.png",
+  persona_05_nondev: "/personas/debate_jung_haeun.png",
+}
+
 const personas: {
   id: string
   title: string
@@ -134,6 +142,7 @@ const personas: {
   description: string
   defaults: PersonaSettings
   color: string
+  imageUrl: string
 }[] = [
   {
     id: "TEAM_LEAD",
@@ -143,6 +152,7 @@ const personas: {
     description: "기술 선택 이유, 프로젝트 진위, 문제 해결",
     defaults: { pressure: 6, followUp: 5, difficulty: "HARD" },
     color: "bg-blue-600",
+    imageUrl: "/personas/TEAM_LEAD.png",
   },
   {
     id: "EXECUTIVE",
@@ -152,6 +162,7 @@ const personas: {
     description: "동기, 태도, 성장 가능성, 조직 적합성",
     defaults: { pressure: 5, followUp: 4, difficulty: "NORMAL" },
     color: "bg-blue-600",
+    imageUrl: "/personas/EXECUTIVE.png",
   },
   {
     id: "HR_MANAGER",
@@ -161,6 +172,7 @@ const personas: {
     description: "갈등 해결, 피드백 수용, 가치관",
     defaults: { pressure: 3, followUp: 4, difficulty: "EASY" },
     color: "bg-blue-600",
+    imageUrl: "/personas/HR_MANAGER.png",
   },
   {
     id: "TECH_INTERVIEWER",
@@ -170,6 +182,7 @@ const personas: {
     description: "아키텍처, 트레이드오프, 예외 상황 대응",
     defaults: { pressure: 6, followUp: 5, difficulty: "HARD" },
     color: "bg-blue-600",
+    imageUrl: "/personas/TECH_INTERVIEWER.png",
   },
 ]
 
@@ -754,7 +767,6 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                 const list = filteredPersonas
                 const idx = Math.min(personaIdx, Math.max(list.length - 1, 0))
                 const p = list[idx] ?? list[0]
-                const Icon = p?.icon ?? Briefcase
                 const multi = list.length > 1
                 const selectAt = (i: number) => {
                   const n = list.length
@@ -777,11 +789,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                       </button>
                       <div className="flex flex-1 gap-4 rounded-2xl border-2 border-blue-600 bg-blue-50/40 p-4 shadow-sm">
                         <div className="relative aspect-[3/4] w-40 shrink-0 overflow-hidden rounded-xl bg-slate-100">
-                          <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 9px, rgba(100,116,139,0.08) 9px 18px)" }} />
-                          <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
-                            <Icon className="h-8 w-8" />
-                            <span className="text-[9px]">면접관 이미지</span>
-                          </div>
+                          <img src={p.imageUrl} alt={p.title} className="absolute inset-0 h-full w-full object-cover" />
                           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/55 to-transparent p-2.5">
                             <span className="block truncate text-sm font-bold text-white drop-shadow">{p.title}</span>
                           </div>
@@ -1424,11 +1432,7 @@ export function InterviewModal({ open, onOpenChange, prefillData }: InterviewMod
                       </button>
                       <div className="flex flex-1 gap-4 rounded-2xl border-2 border-blue-600 bg-blue-50/40 p-4 shadow-sm">
                         <div className="relative aspect-[3/4] w-40 shrink-0 overflow-hidden rounded-xl bg-slate-100">
-                          <div className="absolute inset-0" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent 0 9px, rgba(100,116,139,0.08) 9px 18px)" }} />
-                          <div className="relative flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
-                            <Users className="h-8 w-8" />
-                            <span className="text-[9px]">토론 상대 이미지</span>
-                          </div>
+                          <img src={debatePersonaImages[p.personaKey]} alt={p.name} className="absolute inset-0 h-full w-full object-cover" />
                           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/55 to-transparent p-2.5">
                             <span className="block truncate text-sm font-bold text-white drop-shadow">{p.name}</span>
                           </div>
