@@ -39,6 +39,7 @@ export function DocumentAssets() {
   const [files, setFiles] = useState<DocumentItem[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     fetchFiles()
@@ -46,11 +47,13 @@ export function DocumentAssets() {
 
   async function fetchFiles() {
     setLoading(true)
+    setErrorMessage(null)
     try {
       const data = await getDocumentList(selectedType)
       setFiles(data)
-    } catch {
+    } catch (error) {
       setFiles([])
+      setErrorMessage(error instanceof Error ? error.message : "문서 목록을 불러오지 못했습니다.")
     } finally {
       setLoading(false)
     }
@@ -60,27 +63,42 @@ export function DocumentAssets() {
     try {
       await setRepresentative(documentId)
       await fetchFiles()
-    } catch { /* 실패 */ }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "대표 문서 설정에 실패했습니다.")
+    }
   }
 
   const handleDeleteFile = async (documentId: number) => {
     try {
       await deleteDocument(documentId)
       setFiles(prev => prev.filter(f => f.id !== documentId))
-    } catch { /* 실패 */ }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "문서 삭제에 실패했습니다.")
+    }
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
+    setErrorMessage(null)
     try {
       const { presignedUrl, s3Key } = await getPresignedUrl(file.name, selectedType)
-      await fetch(presignedUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } })
+      const uploadResponse = await fetch(presignedUrl, {
+        method: "PUT",
+        body: file,
+        ...(file.type ? { headers: { "Content-Type": file.type } } : {}),
+      })
+      if (!uploadResponse.ok) {
+        throw new Error(`파일 저장소 업로드에 실패했습니다. (${uploadResponse.status})`)
+      }
       await completeUpload({ type: selectedType, s3Key, originalFilename: file.name, fileSize: file.size })
       await fetchFiles()
-    } catch { /* 업로드 실패 */ } finally {
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "파일 업로드에 실패했습니다.")
+    } finally {
       setUploading(false)
+      e.target.value = ""
     }
   }
 
@@ -121,6 +139,12 @@ export function DocumentAssets() {
             </span>
           </label>
         </div>
+
+        {errorMessage && (
+          <div role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+            {errorMessage}
+          </div>
+        )}
 
         {/* List */}
         <div className="mt-3 space-y-2">
