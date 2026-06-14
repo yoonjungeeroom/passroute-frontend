@@ -128,10 +128,10 @@ interface PersonaSettings {
 
 const debatePersonaImages: Record<string, string> = {
   persona_01_stable: "/personas/debate_kim_jiwon.png",
-  persona_02_aggressive: "/personas/debate_park_dohyun.png",
-  persona_03_creative: "/personas/debate_lee_seoyeon.png",
-  persona_04_veteran: "/personas/debate_choi_taejin.png",
-  persona_05_nondev: "/personas/debate_jung_haeun.png",
+  persona_02_aggressive: "/personas/debate_dohyunpark.png",
+  persona_03_creative: "/personas/debate_seoyeonlee.png",
+  persona_04_veteran: "/personas/debate_taejinchoi.png",
+  persona_05_nondev: "/personas/debate_haeunjeong.png",
 }
 
 const personas: {
@@ -152,7 +152,7 @@ const personas: {
     description: "기술 선택 이유, 프로젝트 진위, 문제 해결",
     defaults: { pressure: 6, followUp: 5, difficulty: "HARD" },
     color: "bg-blue-600",
-    imageUrl: "/personas/TEAM_LEAD.png",
+    imageUrl: "/personas/interview_teamlead.png",
   },
   {
     id: "EXECUTIVE",
@@ -162,7 +162,7 @@ const personas: {
     description: "동기, 태도, 성장 가능성, 조직 적합성",
     defaults: { pressure: 5, followUp: 4, difficulty: "NORMAL" },
     color: "bg-blue-600",
-    imageUrl: "/personas/EXECUTIVE.png",
+    imageUrl: "/personas/interview_executor.png",
   },
   {
     id: "HR_MANAGER",
@@ -172,7 +172,7 @@ const personas: {
     description: "갈등 해결, 피드백 수용, 가치관",
     defaults: { pressure: 3, followUp: 4, difficulty: "EASY" },
     color: "bg-blue-600",
-    imageUrl: "/personas/HR_MANAGER.png",
+    imageUrl: "/personas/interview_hr.png",
   },
   {
     id: "TECH_INTERVIEWER",
@@ -182,7 +182,7 @@ const personas: {
     description: "아키텍처, 트레이드오프, 예외 상황 대응",
     defaults: { pressure: 6, followUp: 5, difficulty: "HARD" },
     color: "bg-blue-600",
-    imageUrl: "/personas/TECH_INTERVIEWER.png",
+    imageUrl: "/personas/interview_developer.png",
   },
 ]
 
