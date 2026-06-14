@@ -1,4 +1,4 @@
-import { apiFetch, getAuthHeaders, handleAuthError } from "./client"
+import { apiFetch } from "./client"
 
 export interface DocumentItem {
   id: number
@@ -38,17 +38,12 @@ export async function completeUpload(data: {
 }
 
 export async function getDocumentList(type: "RESUME" | "PORTFOLIO"): Promise<DocumentItem[]> {
-  const response = await fetch(`/documents?type=${type}`, {
-    method: "GET",
-    headers: getAuthHeaders(),
-  })
-
-  handleAuthError(response.status)
-
-  if (!response.ok) throw new Error("문서 목록 조회에 실패했습니다")
-
-  const result = await response.json()
-  return result.data?.documents ?? []
+  const result = await apiFetch<{ documents: DocumentItem[] }>(
+    `/documents?type=${type}`,
+    { method: "GET" },
+    "문서 목록 조회에 실패했습니다"
+  )
+  return result.documents ?? []
 }
 
 export async function setRepresentative(documentId: number): Promise<void> {
